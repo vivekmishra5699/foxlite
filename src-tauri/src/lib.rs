@@ -241,8 +241,8 @@ fn add_chrome(handle: &AppHandle, window: &Window, opaque: bool, dark: bool) -> 
         std::env::consts::OS,
         if opaque { "&opaque=1" } else { "" }
     );
-    let mut builder = WebviewBuilder::new("chrome", WebviewUrl::App(query.into()))
-        .disable_drag_drop_handler();
+    let mut builder =
+        WebviewBuilder::new("chrome", WebviewUrl::App(query.into())).disable_drag_drop_handler();
     if opaque {
         builder = builder.background_color(tabs::frame_color(dark));
     } else {
