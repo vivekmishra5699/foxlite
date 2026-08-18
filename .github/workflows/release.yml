@@ -1,0 +1,84 @@
+name: Build installers
+
+# Builds Foxlite for macOS (Apple Silicon + Intel), Windows and Linux and
+# attaches the installers to the workflow run as downloadable artifacts. Runs
+# on every push to main, on version tags, and on demand (Actions ▸ Run
+# workflow) — no GitHub Release is created, so this works on a private repo
+# for sharing pre-release builds. Tag a version (v0.1.0) to also publish a
+# draft GitHub Release with the same files.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (Apple Silicon)
+            os: macos-14
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - name: macOS (Intel)
+            os: macos-13
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          - name: Windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: ""
+          - name: Linux
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            args: ""
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf build-essential curl wget file libxdo-dev libssl-dev
+
+      - run: npm ci
+
+      - name: Build
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: ${{ matrix.args }}
+          # Only publish a (draft) release for version tags; plain pushes just
+          # produce artifacts below.
+          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('Foxlite {0}', github.ref_name) || '' }}
+          releaseDraft: true
+          prerelease: true
+
+      - name: Collect installers
+        shell: bash
+        run: |
+          mkdir -p out
+          find src-tauri/target -type f \( -name "*.dmg" -o -name "*.msi" -o -name "*-setup.exe" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) -exec cp {} out/ \;
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: foxlite-${{ matrix.target }}
+          path: out/*
+          if-no-files-found: error

@@ -1,0 +1,19 @@
+# Build output
+src-tauri/target/
+src-tauri/gen/schemas/
+node_modules/
+dist/
+
+# Downloaded filter lists (regenerate with `npm run blocklist`)
+tools/blocklist/cache/
+
+# Logs
+*.log
+logs/
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.local

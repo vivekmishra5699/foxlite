@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "internal-pages",
+  "description": "Grant core IPC to our bundled internal pages (home, settings, history) when loaded inside a tab webview. Scoped to LOCAL content only (no `remote` block), so external https pages loaded in the same `tab-*` webview cannot call into the app.",
+  "local": true,
+  "webviews": ["tab-*"],
+  "permissions": ["core:default"]
+}

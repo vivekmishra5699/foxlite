@@ -1,0 +1,110 @@
+/* Shared design tokens + base reset for every Foxlite surface (chrome UI and
+   the bundled internal pages). Toggle light/dark with `data-theme` on <html>.
+
+   Zen-inspired look: soft neutral surfaces, a warm amber accent, translucent
+   hairline borders, and generous rounding. Surfaces "float" on a darker frame
+   (`--frame`), which is also painted as the native window background so the
+   page content reads as an inset card. */
+
+:root {
+  /* Frame = window background behind the floating page + the chrome backdrop. */
+  --frame: #161519;
+  /* Translucent scrim laid over the window's vibrancy in the chrome strip, so
+     text/icons stay readable over the frosted glass without killing the blur. */
+  --chrome-veil: rgba(16, 15, 20, 0.22);
+  /* Frosted-glass surfaces for the bundled internal pages (settings/history),
+     which run in transparent webviews so the vibrancy shows through them too.
+     A touch more opaque than the chrome veil for body-text readability. */
+  --page-veil: rgba(18, 17, 22, 0.5);
+  --card-frost: rgba(255, 255, 255, 0.05);
+  --bg: #161519;
+  /* Elevated, floating surfaces: the active tab, address pill, menu. */
+  --bg-elev: #242329;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(255, 255, 255, 0.1);
+  --bg-sink: #100f13;
+  --surface: #1d1c22;
+
+  /* Translucent control surfaces for the chrome — they sit ON the frosted glass
+     so they're tinted glass too, not opaque blocks. `--icon` keeps line icons
+     crisp over the blur. */
+  --ctl: rgba(255, 255, 255, 0.08);
+  --ctl-hover: rgba(255, 255, 255, 0.13);
+  --ctl-strong: rgba(255, 255, 255, 0.18);
+  --icon: rgba(236, 234, 243, 0.78);
+
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.13);
+
+  --text: #eceaf3;
+  --text-dim: #9d99ab;
+
+  /* Warm amber accent (the fox). The soft/hover variants derive from
+     `--accent` so a custom accent (Settings ▸ Appearance) recolours the whole
+     UI by overriding just `--accent` + `--accent-text` (see appearance.js). */
+  --accent: #d97b32;
+  --accent-text: #ffffff;
+  --accent-hover: color-mix(in srgb, var(--accent), #fff 16%);
+  --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-grad: var(--accent);
+
+  --danger: #f0867f;
+
+  --radius: 13px;
+  --radius-sm: 9px;
+  --radius-pill: 999px;
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --ring: 0 0 0 3px var(--accent-soft);
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --frame: #e8e7ee;
+  --chrome-veil: rgba(255, 255, 255, 0.45);
+  --page-veil: rgba(238, 238, 244, 0.55);
+  --card-frost: rgba(255, 255, 255, 0.55);
+  --bg: #e8e7ee;
+  --bg-elev: #ffffff;
+  --bg-hover: rgba(0, 0, 0, 0.05);
+  --bg-active: rgba(0, 0, 0, 0.08);
+  --bg-sink: #dedce6;
+  --surface: #ffffff;
+
+  --ctl: rgba(255, 255, 255, 0.45);
+  --ctl-hover: rgba(255, 255, 255, 0.65);
+  --ctl-strong: rgba(255, 255, 255, 0.9);
+  --icon: rgba(31, 29, 38, 0.72);
+
+  --border: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.13);
+
+  --text: #1f1d26;
+  --text-dim: #6e6a7a;
+
+  --accent: #c96a24;
+  --accent-text: #ffffff;
+  --accent-hover: color-mix(in srgb, var(--accent), #000 12%);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-grad: var(--accent);
+
+  --danger: #e0544c;
+
+  --shadow: 0 12px 40px rgba(60, 50, 90, 0.16);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.07);
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text);
+}

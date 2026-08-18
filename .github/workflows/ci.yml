@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Frontend: every module must parse and every import must resolve.
+      - name: JS syntax + imports
+        run: |
+          for f in src/*.js tools/blocklist/build.mjs; do node --check "$f"; done
+          node -e '
+            const fs=require("fs");const dir="src/";
+            const files=fs.readdirSync(dir).filter(f=>f.endsWith(".js"));
+            const ex={};for(const f of files){ex[f]=[...fs.readFileSync(dir+f,"utf8").matchAll(/export (?:async )?(?:function|const|let) (\w+)/g)].map(m=>m[1]);}
+            let bad=0;for(const f of files){for(const m of fs.readFileSync(dir+f,"utf8").matchAll(/import \{([^}]+)\} from "\.\/(\w+\.js)"/g)){for(const n of m[1].split(",").map(x=>x.trim()).filter(Boolean)){if(!ex[m[2]]?.includes(n)){console.error("MISSING",f,n,m[2]);bad=1;}}}}
+            process.exit(bad);'
+      # Guardrails from the 2026-08 audit — cheap greps that fail the build if
+      # a known regression comes back (see README ▸ Engineering guardrails).
+      - name: Guardrails
+        run: |
+          set -e
+          fail(){ echo "::error::$1"; exit 1; }
+          grep -q '"withGlobalTauri": false' src-tauri/tauri.conf.json || fail "withGlobalTauri must stay off (use src/ipc.js)"
+          grep -q 'default-src' src-tauri/tauri.conf.json || fail "CSP must be set"
+          ! grep -rq 'icons.duckduckgo' src || fail "no third-party favicon service"
+          ! grep -q 'libc::kill' src-tauri/src/native.rs || fail "no raw kill(2); terminate via WebKit after Tauri close"
+          grep -q 'view.hide()' src-tauri/src/layout.rs || fail "background tabs must be hidden, not parked"
+          grep -q 'EMIT_PENDING' src-tauri/src/tabs.rs || fail "state emits must stay coalesced"
+          grep -q 'history.jsonl' src-tauri/src/store.rs || fail "history must stay append-only"
+          test -f src-tauri/blocklist/rules.jsonl.br || fail "embedded rule set missing (npm run blocklist)"
+
+      - name: rustfmt
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
+      - name: clippy (deny warnings)
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - name: tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: build (release)
+        run: cargo build --manifest-path src-tauri/Cargo.toml --release

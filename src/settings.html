@@ -1,0 +1,903 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Settings</title>
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="pages.css" />
+    <style>
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        overflow-x: hidden;
+      }
+      .layout {
+        display: flex;
+        align-items: flex-start;
+        min-height: 100%;
+      }
+
+      /* ---- Sidebar ---- */
+      .sidebar {
+        position: sticky;
+        top: 0;
+        flex: none;
+        width: 224px;
+        height: 100vh;
+        padding: 26px 14px;
+        border-right: 1px solid var(--border);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 16px;
+        font-weight: 600;
+        padding: 0 10px 20px;
+      }
+      .brand .logo {
+        width: 28px;
+        height: 28px;
+        border-radius: 9px;
+        background: var(--accent);
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+      }
+      .nav {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .nav a {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: var(--radius-sm);
+        color: var(--text-dim);
+        text-decoration: none;
+        font-size: 13.5px;
+        cursor: pointer;
+        transition: background 0.12s, color 0.12s;
+      }
+      .nav a svg {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        opacity: 0.8;
+      }
+      .nav a:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .nav a.active {
+        background: var(--bg-active);
+        color: var(--text);
+        font-weight: 500;
+      }
+      .nav a.active svg {
+        color: var(--accent);
+        opacity: 1;
+      }
+      .nav .spacer {
+        height: 8px;
+      }
+
+      /* ---- Content ---- */
+      .content {
+        flex: 1;
+        min-width: 0;
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 42px 40px 120px;
+      }
+      .page-title {
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: -0.3px;
+        margin: 0 4px 4px;
+      }
+      .page-sub {
+        color: var(--text-dim);
+        font-size: 14px;
+        margin: 0 4px 24px;
+      }
+      .section {
+        scroll-margin-top: 24px;
+      }
+      .section h2 {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: var(--text-dim);
+        margin: 34px 4px 10px;
+      }
+      .card {
+        padding: 2px 18px;
+      }
+
+      /* Row = label column | control column (right-aligned). Wraps into a
+         single column on narrow windows. */
+      .row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px 28px;
+        padding: 14px 0;
+      }
+      .row.stack {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .row[hidden] {
+        display: none;
+      }
+      .row .label {
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .row .desc {
+        font-size: 12.5px;
+        line-height: 1.5;
+        color: var(--text-dim);
+        margin-top: 2px;
+        max-width: 46ch;
+      }
+      .row .desc kbd {
+        font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+        padding: 1px 5px;
+        border: 1px solid var(--border-strong);
+        border-bottom-width: 2px;
+        border-radius: 5px;
+        color: var(--text);
+      }
+      .ctl {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        min-width: 0;
+      }
+      .ctl select {
+        min-width: 190px;
+      }
+      @media (max-width: 720px) {
+        .row {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .ctl {
+          justify-content: flex-start;
+        }
+      }
+
+      /* Segmented control (theme). */
+      .seg {
+        display: inline-flex;
+        background: var(--bg-sink);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 2px;
+      }
+      .seg button {
+        height: 28px;
+        border: none;
+        background: transparent;
+        border-radius: 6px;
+        padding: 0 14px;
+        color: var(--text-dim);
+      }
+      .seg button:hover {
+        color: var(--text);
+        background: transparent;
+      }
+      .seg button.active {
+        background: var(--accent);
+        color: var(--accent-text);
+      }
+
+      /* Accent colour picker — one tidy row. */
+      .accents {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .accent-dot {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        cursor: pointer;
+        border: none;
+        padding: 0;
+        transition: transform 0.1s;
+      }
+      .accent-dot:hover {
+        transform: scale(1.12);
+      }
+      .accent-dot.sel {
+        outline: 2px solid var(--text);
+        outline-offset: 2px;
+      }
+      .accent-custom {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        overflow: hidden;
+        border: 1px dashed var(--border-strong);
+        background: none;
+        cursor: pointer;
+        padding: 0;
+        margin-left: 4px;
+      }
+      .accent-custom::-webkit-color-swatch-wrapper {
+        padding: 0;
+      }
+      .accent-custom::-webkit-color-swatch {
+        border: none;
+        border-radius: 50%;
+      }
+
+      /* Wallpaper: live preview + one row of presets + source inputs. */
+      .wp-preview {
+        width: 100%;
+        height: 132px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: var(--bg-sink) center / cover no-repeat;
+        margin: 6px 0 12px;
+        position: relative;
+        overflow: hidden;
+      }
+      .wp-preview .tag {
+        position: absolute;
+        left: 10px;
+        bottom: 8px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.45);
+        color: #fff;
+        font-size: 11px;
+        backdrop-filter: blur(6px);
+      }
+      .wp-bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .swatches {
+        display: flex;
+        gap: 8px;
+        flex: none;
+      }
+      .swatch {
+        width: 44px;
+        height: 30px;
+        border-radius: 7px;
+        cursor: pointer;
+        border: 2px solid transparent;
+        transition: transform 0.1s;
+      }
+      .swatch:hover {
+        transform: translateY(-1px);
+      }
+      .swatch.sel {
+        border-color: var(--text);
+      }
+      .wp-src {
+        display: flex;
+        gap: 8px;
+        flex: 1 1 260px;
+        min-width: 0;
+        justify-content: flex-end;
+      }
+      .wp-src input[type="url"] {
+        flex: 1;
+        min-width: 140px;
+        height: 32px;
+      }
+      .file-btn {
+        position: relative;
+        overflow: hidden;
+        height: 32px;
+        flex: none;
+      }
+      .file-btn input[type="file"] {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+      }
+
+      /* Bookmarks manager. */
+      .bm-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 2px;
+        border-bottom: 1px solid var(--border);
+      }
+      .bm-item:last-child {
+        border-bottom: none;
+      }
+      .bm-item .tab-fav {
+        width: 18px;
+        height: 18px;
+        flex: none;
+        display: grid;
+        place-items: center;
+        color: var(--text-dim);
+      }
+      .bm-item .tab-fav img,
+      .bm-item .tab-fav svg {
+        width: 18px;
+        height: 18px;
+        border-radius: 4px;
+      }
+      .bm-item .meta {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .bm-item .meta .t {
+        font-size: 13.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .bm-item .meta .u {
+        font-size: 12px;
+        color: var(--text-dim);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .bm-del {
+        flex: none;
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        color: var(--text-dim);
+        border-color: transparent;
+        background: transparent;
+      }
+      .bm-del:hover {
+        background: color-mix(in srgb, var(--danger) 16%, transparent);
+        color: var(--danger);
+      }
+      .bm-del svg {
+        width: 15px;
+        height: 15px;
+      }
+      .muted {
+        color: var(--text-dim);
+        font-size: 13px;
+        padding: 14px 2px;
+        text-align: center;
+      }
+
+      /* Memory readout. */
+      .memlist {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 14px;
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--text-dim);
+      }
+      .memlist b {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .memtotal b {
+        color: var(--text);
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      /* Shortcuts table. */
+      .keys {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 2px 28px;
+        padding: 6px 0 4px;
+      }
+      .key {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 2px;
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+      }
+      .key:nth-last-child(-n + 2) {
+        border-bottom: none;
+      }
+      .key span {
+        color: var(--text-dim);
+      }
+      .key kbd {
+        flex: none;
+        font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        padding: 2px 7px;
+        border: 1px solid var(--border-strong);
+        border-bottom-width: 2px;
+        border-radius: 6px;
+        color: var(--text);
+        background: var(--card-frost);
+        min-width: 44px;
+        text-align: center;
+      }
+
+      .about {
+        color: var(--text-dim);
+        font-size: 13px;
+        line-height: 1.7;
+        padding: 12px 2px;
+      }
+      .about b {
+        color: var(--text);
+      }
+      .about .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .about .chip {
+        padding: 2px 9px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        font-size: 12px;
+      }
+
+      .saved {
+        position: fixed;
+        left: 50%;
+        bottom: 26px;
+        transform: translate(-50%, 20px);
+        padding: 8px 16px;
+        border-radius: 999px;
+        background: var(--text);
+        color: var(--bg);
+        font-size: 13px;
+        font-weight: 500;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.18s, transform 0.18s;
+      }
+      .saved.show {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+
+      /* Narrow window: sidebar becomes a horizontal strip on top. */
+      @media (max-width: 760px) {
+        .layout {
+          flex-direction: column;
+        }
+        .sidebar {
+          position: static;
+          width: 100%;
+          height: auto;
+          padding: 20px 14px 8px;
+          border-right: none;
+          border-bottom: 1px solid var(--border);
+        }
+        .brand {
+          padding-bottom: 10px;
+        }
+        .nav {
+          flex-direction: row;
+          flex-wrap: wrap;
+        }
+        .nav .spacer {
+          display: none;
+        }
+        .content {
+          padding: 22px 18px 100px;
+        }
+      }
+    </style>
+    <script type="module" src="settings.js"></script>
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand"><span class="logo">🦊</span> Foxlite</div>
+        <nav class="nav">
+          <a href="#appearance" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2a10 10 0 1 0 0 20 2 2 0 0 0 1.6-3.2 2 2 0 0 1 1.6-3.2H17a5 5 0 0 0 5-5c0-4.8-4.5-8.6-10-8.6Z"/></svg>Appearance</a>
+          <a href="#search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>Search</a>
+          <a href="#bookmarks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.1 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 8.9 8.3"/></svg>Bookmarks</a>
+          <a href="#performance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>Performance</a>
+          <a href="#privacy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>Privacy &amp; security</a>
+          <a href="#developer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg>Developer</a>
+          <div class="spacer"></div>
+          <a href="#shortcuts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M9 13h6"/></svg>Shortcuts</a>
+          <a href="#about"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>About</a>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <h1 class="page-title">Settings</h1>
+        <p class="page-sub">Make Foxlite yours.</p>
+
+        <!-- ================= Appearance ================= -->
+        <section class="section" id="appearance">
+          <h2>Appearance</h2>
+          <div class="card">
+            <div class="row">
+              <div>
+                <div class="label">Theme</div>
+                <div class="desc">Light, dark, or follow the system.</div>
+              </div>
+              <div class="ctl">
+                <div class="seg" id="theme">
+                  <button data-v="light">Light</button>
+                  <button data-v="dark">Dark</button>
+                  <button data-v="system">System</button>
+                </div>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">Accent colour</div>
+                <div class="desc">Tints buttons, highlights, and the address bar.</div>
+              </div>
+              <div class="ctl"><div class="accents" id="accents"></div></div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">Default page zoom</div>
+                <div class="desc">Zoom level new tabs open at. Tweak any page with <kbd>⌘</kbd> <kbd>+</kbd> / <kbd>−</kbd>.</div>
+              </div>
+              <div class="ctl">
+                <select id="zoom">
+                  <option value="0.8">80%</option>
+                  <option value="0.9">90%</option>
+                  <option value="1">100%</option>
+                  <option value="1.1">110%</option>
+                  <option value="1.25">125%</option>
+                  <option value="1.5">150%</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">Reduce transparency</div>
+                <div class="desc" id="rtdesc">
+                  Use a plain opaque window instead of frosted glass — less GPU and
+                  compositing work, easier on battery. Applies on the next launch.
+                </div>
+              </div>
+              <div class="ctl">
+                <label class="switch">
+                  <input type="checkbox" id="reducetransparency" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">Show bookmarks bar</div>
+                <div class="desc">A row of your bookmarks under the toolbar (<kbd>⇧⌘B</kbd>).</div>
+              </div>
+              <div class="ctl">
+                <label class="switch">
+                  <input type="checkbox" id="bmbar" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="row stack">
+              <div>
+                <div class="label">Home wallpaper</div>
+                <div class="desc">Pick a preset, paste an image URL, or upload a picture.</div>
+              </div>
+              <div>
+                <div class="wp-preview" id="wppreview"><span class="tag" id="wptag"></span></div>
+                <div class="wp-bar">
+                  <div class="swatches" id="swatches"></div>
+                  <div class="wp-src">
+                    <input type="url" id="wpurl" placeholder="https://…/image.jpg" />
+                    <button class="file-btn">
+                      Upload…
+                      <input type="file" id="wpfile" accept="image/*" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= Search ================= -->
+        <section class="section" id="search">
+          <h2>Search</h2>
+          <div class="card">
+            <div class="row">
+              <div>
+                <div class="label">Default search engine</div>
+                <div class="desc">Used for address-bar and home-page searches.</div>
+              </div>
+              <div class="ctl">
+                <select id="engine">
+                  <option value="duckduckgo">DuckDuckGo</option>
+                  <option value="google">Google</option>
+                  <option value="bing">Bing</option>
+                  <option value="brave">Brave</option>
+                  <option value="ecosia">Ecosia</option>
+                  <option value="startpage">Startpage</option>
+                  <option value="yahoo">Yahoo</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">Address bar</div>
+                <div class="desc">
+                  Type a site or a search. Foxlite completes addresses inline from
+                  your history and bookmarks — press <kbd>↵</kbd> to accept,
+                  <kbd>⌫</kbd> to dismiss.
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= Bookmarks ================= -->
+        <section class="section" id="bookmarks">
+          <h2>Bookmarks</h2>
+          <div class="card">
+            <div class="row" style="border-bottom: 1px solid var(--border)">
+              <div>
+                <div class="label">Saved bookmarks</div>
+                <div class="desc" id="bm-count">Manage the pages you've starred.</div>
+              </div>
+            </div>
+            <div id="bmlist"></div>
+          </div>
+        </section>
+
+        <!-- ================= Performance ================= -->
+        <section class="section" id="performance">
+          <h2>Performance</h2>
+          <div class="card">
+            <div class="row">
+              <div>
+                <div class="label">Memory in use</div>
+                <div class="desc" id="memdesc">Measuring…</div>
+              </div>
+              <div class="ctl"><button id="freemem">Sleep background tabs</button></div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">Block ads &amp; trackers</div>
+                <div class="desc" id="blockstatus"></div>
+                <div class="desc" id="blockdesc">
+                  Stops third-party ad networks, trackers and session recorders
+                  from loading at all — pages get lighter and faster. Applies on
+                  the next page load.
+                </div>
+              </div>
+              <div class="ctl">
+                <label class="switch">
+                  <input type="checkbox" id="blockads" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">Block malware &amp; phishing</div>
+                <div class="desc" id="malwaredesc">
+                  Never connects to known malware and phishing hosts, and shows a
+                  warning before loading sites flagged as fraudulent (Safe Browsing).
+                </div>
+              </div>
+              <div class="ctl">
+                <label class="switch">
+                  <input type="checkbox" id="blockmalware" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">Block pop-ups</div>
+                <div class="desc">
+                  Refuses windows a page tries to open on its own. Links and buttons
+                  you click still open in a new tab.
+                </div>
+              </div>
+              <div class="ctl">
+                <label class="switch">
+                  <input type="checkbox" id="blockpopups" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">Hide cookie banners &amp; consent pop-ups</div>
+                <div class="desc" id="annoydesc">
+                  Removes cookie-consent overlays and similar nag boxes. Turn off if a
+                  site misbehaves.
+                </div>
+              </div>
+              <div class="ctl">
+                <label class="switch">
+                  <input type="checkbox" id="blockannoyances" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">Sleep idle tabs</div>
+                <div class="desc">
+                  Unloads background tabs you haven't used in a while to free
+                  memory. They reload when you switch back; hover a tab to see
+                  what it's using.
+                </div>
+              </div>
+              <div class="ctl">
+                <select id="discard">
+                  <option value="0">Never</option>
+                  <option value="1">After 1 minute</option>
+                  <option value="5">After 5 minutes</option>
+                  <option value="15">After 15 minutes</option>
+                  <option value="30">After 30 minutes</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">On startup</div>
+                <div class="desc">
+                  Restored tabs load lazily — only the one you're looking at —
+                  so reopening 30 tabs costs the memory of one.
+                </div>
+              </div>
+              <div class="ctl">
+                <select id="startup">
+                  <option value="home">Open the home page</option>
+                  <option value="restore">Restore last session</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= Privacy ================= -->
+        <section class="section" id="privacy">
+          <h2>Privacy &amp; security</h2>
+          <div class="card">
+            <div class="row">
+              <div>
+                <div class="label">Private tabs</div>
+                <div class="desc">Pages aren't saved to history and use a separate, temporary session (<kbd>⇧⌘N</kbd>).</div>
+              </div>
+              <div class="ctl"><button id="newprivate">New private tab</button></div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">Clear browsing history</div>
+                <div class="desc">Removes every page from your history. Can't be undone.</div>
+              </div>
+              <div class="ctl"><button id="clearhist" class="danger">Clear history</button></div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">Clear cookies &amp; site data</div>
+                <div class="desc">Signs you out everywhere and empties caches and site storage.</div>
+              </div>
+              <div class="ctl"><button id="clearsite" class="danger">Clear site data</button></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= Developer ================= -->
+        <section class="section" id="developer">
+          <h2>Developer</h2>
+          <div class="card">
+            <div class="row">
+              <div>
+                <div class="label">Web Inspector</div>
+                <div class="desc">
+                  Safari's inspector for any tab: <kbd>⌥⌘I</kbd>, right-click ▸
+                  <i>Inspect Element</i>, or the Develop menu. Applies to tabs
+                  opened after changing.
+                </div>
+              </div>
+              <div class="ctl">
+                <label class="switch">
+                  <input type="checkbox" id="devtools" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">User agent</div>
+                <div class="desc">
+                  Sent to every site. Some sites serve better pages to a
+                  Safari/Chrome UA; leave on Default unless you need it.
+                </div>
+              </div>
+              <div class="ctl">
+                <select id="uapreset">
+                  <option value="">Default (WebKit)</option>
+                  <option value="safari">Safari</option>
+                  <option value="chrome">Chrome</option>
+                  <option value="firefox">Firefox</option>
+                  <option value="mobile">iPhone Safari</option>
+                  <option value="custom">Custom…</option>
+                </select>
+              </div>
+            </div>
+            <div class="row stack" id="uarow" hidden>
+              <input type="text" id="ua" placeholder="Custom user-agent string" style="width: 100%" />
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= Shortcuts ================= -->
+        <section class="section" id="shortcuts">
+          <h2>Keyboard shortcuts</h2>
+          <div class="card">
+            <div class="keys">
+              <div class="key"><span>New tab</span><kbd>⌘T</kbd></div>
+              <div class="key"><span>New private tab</span><kbd>⇧⌘N</kbd></div>
+              <div class="key"><span>Close tab</span><kbd>⌘W</kbd></div>
+              <div class="key"><span>Reopen closed tab</span><kbd>⇧⌘T</kbd></div>
+              <div class="key"><span>Next / previous tab</span><kbd>⌃⇥ · ⌃⇧⇥</kbd></div>
+              <div class="key"><span>Jump to tab 1–8, last</span><kbd>⌘1…8 · ⌘9</kbd></div>
+              <div class="key"><span>Open location</span><kbd>⌘L</kbd></div>
+              <div class="key"><span>Find in page</span><kbd>⌘F</kbd></div>
+              <div class="key"><span>Back / forward</span><kbd>⌘[ · ⌘]</kbd></div>
+              <div class="key"><span>Reload · ignoring cache</span><kbd>⌘R · ⇧⌘R</kbd></div>
+              <div class="key"><span>Stop loading</span><kbd>⌘.</kbd></div>
+              <div class="key"><span>Zoom in / out / reset</span><kbd>⌘+ · ⌘− · ⌘0</kbd></div>
+              <div class="key"><span>Bookmark page</span><kbd>⌘D</kbd></div>
+              <div class="key"><span>Toggle bookmarks bar</span><kbd>⇧⌘B</kbd></div>
+              <div class="key"><span>History</span><kbd>⌘Y</kbd></div>
+              <div class="key"><span>Print</span><kbd>⌘P</kbd></div>
+              <div class="key"><span>Web Inspector</span><kbd>⌥⌘I</kbd></div>
+              <div class="key"><span>View page source</span><kbd>⌥⌘U</kbd></div>
+              <div class="key"><span>Settings</span><kbd>⌘,</kbd></div>
+              <div class="key"><span>Middle-click a tab</span><kbd>Close</kbd></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= About ================= -->
+        <section class="section" id="about">
+          <h2>About</h2>
+          <div class="card">
+            <div class="about">
+              <b>Foxlite</b> · version 0.1.0<br />
+              A minimal, memory-light browser on the system WebView (WKWebView on
+              macOS, WebView2 on Windows) — real sites, including streaming
+              video, just work while memory stays low.
+              <div class="chips" id="aboutchips"></div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <div class="saved" id="saved">Saved</div>
+  </body>
+</html>

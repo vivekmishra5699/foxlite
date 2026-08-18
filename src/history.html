@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>History</title>
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="pages.css" />
+    <style>
+      .head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+      .head h1 {
+        margin: 0;
+      }
+      #search {
+        flex: 1;
+        max-width: 320px;
+        height: 36px;
+        min-width: 0;
+      }
+      .day {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        margin: 22px 4px 8px;
+      }
+      .item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 9px 12px;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        text-decoration: none;
+        color: inherit;
+      }
+      .item:hover {
+        background: var(--bg-hover);
+      }
+      .item .fav {
+        width: 18px;
+        height: 18px;
+        flex: none;
+        display: grid;
+        place-items: center;
+        color: var(--text-dim);
+      }
+      .item .fav img,
+      .item .fav svg {
+        width: 18px;
+        height: 18px;
+      }
+      .more {
+        height: 1px;
+      }
+      .item .t {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .item .u {
+        color: var(--text-dim);
+        font-size: 12px;
+        max-width: 38%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .item .time {
+        color: var(--text-dim);
+        font-size: 12px;
+        flex: none;
+      }
+      .empty {
+        color: var(--text-dim);
+        text-align: center;
+        padding: 60px 0;
+      }
+    </style>
+    <script type="module" src="history.js"></script>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head">
+        <h1>History</h1>
+        <input id="search" type="text" placeholder="Search history" autocomplete="off" />
+        <button id="clear" class="danger">Clear history</button>
+      </div>
+      <div id="list"></div>
+    </div>
+  </body>
+</html>

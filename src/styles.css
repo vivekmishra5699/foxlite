@@ -1,0 +1,415 @@
+/* Chrome UI (tab bar + toolbar + bookmarks/find bars). Design tokens come from
+   theme.css; this file is layout + chrome-specific styling only.
+
+   Zen-inspired chrome: the whole strip sits on the `--frame` colour (which is
+   also the native window background), and the controls — tabs, address pill,
+   icon buttons — float on top as soft, rounded surfaces. No hard divider lines:
+   strips are separated by breathing room, not borders.
+
+   Strip heights here MUST match the constants in chrome.js so the reported
+   chrome height lines up with what's rendered. */
+
+html,
+body {
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  /* Transparent chrome webview reveals the window's frosted-glass vibrancy;
+     a faint veil keeps controls readable over it. */
+  background: var(--chrome-veil);
+}
+/* Private tab: badge next to the address bar + a tinted address pill. */
+#private-badge {
+  display: none;
+  flex: none;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+  background: var(--accent);
+}
+body.private #private-badge {
+  display: inline-block;
+}
+body.private #address {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+/* "Reduce transparency": the window is an opaque frame, so paint it solid. */
+body.opaque {
+  background: var(--frame);
+}
+
+/* ---- Tab bar (shares the title-bar row with the traffic lights) ---- */
+#tabbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 40px;
+  /* leave room on the left for the macOS traffic lights */
+  padding: 6px 8px 0 82px;
+  background: transparent;
+}
+/* Windows/Linux draw a native title bar above us: no traffic-light inset. */
+body:not(.os-macos) #tabbar {
+  padding-left: 8px;
+}
+
+#tabs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  /* size to the tabs so the + button sits right after them, not far right */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Highlight when dragging a link onto the tab bar. */
+#tabbar.drop-target {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  border-radius: var(--radius);
+}
+
+/* Flexible draggable gap between the + button and the menu. */
+#tabbar-spacer {
+  flex: 1 1 auto;
+  align-self: stretch;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 220px;
+  flex: 0 1 200px;
+  height: 34px;
+  padding: 0 8px 0 11px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.tab:hover {
+  background: var(--ctl);
+  color: var(--text);
+}
+.tab.active {
+  background: var(--ctl-strong);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+/* Asleep (memory saver discarded it). */
+.tab.discarded:not(.active) {
+  opacity: 0.5;
+}
+/* Private tab: a faint mask-tinted stripe so it reads as separate at a glance. */
+.tab.incognito {
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.tab.incognito.active {
+  box-shadow: var(--shadow-sm), inset 0 -2px 0 var(--accent);
+}
+/* Drag-to-reorder feedback. */
+.tab.dragging {
+  opacity: 0.35;
+}
+.tab.drop-before {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.tab.drop-after {
+  box-shadow: inset -2px 0 0 var(--accent);
+}
+
+.tab-fav {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  overflow: hidden;
+  color: var(--text-dim);
+}
+.tab.active .tab-fav {
+  color: var(--text);
+}
+.tab-fav img {
+  width: 16px;
+  height: 16px;
+}
+.tab-fav svg {
+  width: 15px;
+  height: 15px;
+}
+.tab-spinner {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tab-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+
+.tab-close {
+  flex: none;
+  width: 19px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s;
+}
+.tab-close svg {
+  width: 13px;
+  height: 13px;
+}
+.tab:hover .tab-close,
+.tab.active .tab-close {
+  opacity: 0.55;
+}
+.tab-close:hover {
+  background: var(--ctl-hover);
+  opacity: 1;
+}
+
+/* ---- Toolbar ---- */
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 48px;
+  padding: 0 10px;
+  background: transparent;
+}
+
+button.icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--icon);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+button.icon svg {
+  width: 18px;
+  height: 18px;
+}
+button.icon:hover {
+  background: var(--ctl-hover);
+  color: var(--text);
+}
+button.icon:active {
+  background: var(--ctl-strong);
+}
+button.icon:disabled {
+  color: var(--text-dim);
+  opacity: 0.3;
+  cursor: default;
+  background: transparent;
+}
+/* Bookmarked: filled gold star. */
+#star.on {
+  color: #f5b62b;
+}
+#star.on:hover {
+  color: #f5b62b;
+}
+
+#address {
+  flex: 1;
+  height: 38px;
+  margin: 0 8px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--ctl);
+  color: var(--text);
+  font-size: 13.5px;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+  transition: box-shadow 0.15s ease, background 0.15s ease,
+    border-color 0.15s ease;
+}
+#address::placeholder {
+  color: var(--text-dim);
+}
+#address:hover {
+  background: var(--ctl-hover);
+}
+#address:focus {
+  background: var(--ctl-strong);
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+/* ---- Bookmarks bar ---- */
+#bookmarks {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  height: 38px;
+  padding: 0 12px 6px;
+  background: transparent;
+  overflow: hidden;
+}
+body.show-bookmarks #bookmarks {
+  display: flex;
+}
+.bm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  max-width: 180px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  cursor: default;
+  transition: background 0.12s, color 0.12s;
+}
+.bm:hover {
+  background: var(--ctl);
+  color: var(--text);
+}
+.bm img {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+.bm span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+.bm-empty {
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 0 6px;
+}
+
+/* ---- Find bar ---- */
+#findbar {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  padding: 0 12px 6px;
+  background: transparent;
+}
+body.show-find #findbar {
+  display: flex;
+}
+#find-input {
+  flex: 1;
+  max-width: 300px;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--ctl);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+#find-input:focus {
+  background: var(--ctl-strong);
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+/* ---- Toast (downloads) ---- */
+#toast {
+  position: fixed;
+  right: 12px;
+  top: 46px;
+  z-index: 10;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  max-width: 420px;
+  height: 34px;
+  padding: 0 6px 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--bg-elev);
+  color: var(--text);
+  font-size: 12.5px;
+  box-shadow: var(--shadow-sm);
+}
+#toast.show {
+  display: flex;
+}
+#toast .toast-icon {
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+}
+#toast .toast-icon svg,
+#toast .toast-x svg {
+  width: 15px;
+  height: 15px;
+}
+#toast .toast-msg {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#toast button {
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+#toast button.toast-x {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  padding: 0;
+  background: transparent;
+  color: var(--text-dim);
+}
+#toast button.toast-x:hover {
+  background: var(--ctl-hover);
+  color: var(--text);
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Allow the chrome UI webview to use core IPC + drag the window. Scoped to the chrome webview only so external page content cannot call into the app.",
+  "webviews": ["chrome"],
+  "permissions": ["core:default", "core:window:allow-start-dragging"]
+}

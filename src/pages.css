@@ -1,0 +1,133 @@
+/* Shared styling for the bundled settings + history pages. These run in
+   transparent webviews, so the body + cards are frosted glass over the window's
+   vibrancy — keeping them visually consistent with the chrome. */
+
+body {
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--page-veil);
+}
+
+.wrap {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+h1 {
+  font-size: 26px;
+  font-weight: 600;
+  margin: 0 0 24px;
+}
+
+.card {
+  background: var(--card-frost);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 18px;
+  margin-bottom: 18px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+.row:last-child {
+  border-bottom: none;
+}
+.row .label {
+  font-size: 14px;
+}
+.row .desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 3px;
+}
+
+select,
+input[type="text"],
+input[type="url"] {
+  height: 34px;
+  min-width: 200px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+select:focus,
+input:focus {
+  border-color: var(--accent);
+}
+
+button {
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+button:hover {
+  background: var(--bg-hover);
+}
+button.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-text);
+}
+button.primary:hover {
+  background: var(--accent-hover);
+}
+button.danger {
+  color: var(--danger);
+}
+
+/* Toggle switch */
+.switch {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  flex: none;
+}
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.slider {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-sink);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.slider::before {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 2px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+.switch input:checked + .slider {
+  background: var(--accent);
+  border-color: transparent;
+}
+.switch input:checked + .slider::before {
+  transform: translateX(18px);
+}

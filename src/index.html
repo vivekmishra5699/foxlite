@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Foxlite</title>
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="chrome.js"></script>
+  </head>
+  <body>
+    <!-- Tab bar shares the title-bar row with the macOS traffic lights, so it
+         is the window's drag region. -->
+    <div id="tabbar" data-tauri-drag-region>
+      <div id="tabs"></div>
+      <button id="newtab" class="icon" title="New tab (⌘T)"></button>
+      <div id="tabbar-spacer" data-tauri-drag-region></div>
+    </div>
+    <div id="toolbar">
+      <button id="back" class="icon" title="Back"></button>
+      <button id="forward" class="icon" title="Forward"></button>
+      <button id="reload" class="icon" title="Reload (⌘R)"></button>
+      <input
+        id="address"
+        type="text"
+        placeholder="Search or enter address"
+        spellcheck="false"
+        autocomplete="off"
+      />
+      <span id="private-badge" title="Private tab — nothing here is saved to history, and its cookies are erased when you close it">Private</span>
+      <button id="star" class="icon" title="Bookmark this page (⌘D)"></button>
+      <button id="menu" class="icon" title="Menu"></button>
+    </div>
+    <!-- Bookmarks bar (shown per settings). -->
+    <div id="bookmarks"></div>
+    <!-- Find-in-page bar (toggled with ⌘F). -->
+    <div id="findbar">
+      <input
+        id="find-input"
+        type="text"
+        placeholder="Find in page"
+        spellcheck="false"
+        autocomplete="off"
+      />
+      <button id="find-prev" class="icon" title="Previous"></button>
+      <button id="find-next" class="icon" title="Next"></button>
+      <button id="find-close" class="icon" title="Close (Esc)"></button>
+    </div>
+    <!-- Transient notice (downloads). -->
+    <div id="toast" role="status"></div>
+  </body>
+</html>

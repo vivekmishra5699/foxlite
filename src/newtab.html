@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>New Tab</title>
+    <link rel="stylesheet" href="theme.css" />
+    <style>
+      html,
+      body {
+        overflow: hidden;
+        background: var(--bg-sink);
+        background-size: cover;
+        background-position: center;
+      }
+      /* Readability scrim over the wallpaper. */
+      #scrim {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        background: linear-gradient(
+          to bottom,
+          rgba(0, 0, 0, 0.28),
+          rgba(0, 0, 0, 0.1) 42%,
+          rgba(0, 0, 0, 0.42)
+        );
+      }
+      body.no-scrim #scrim {
+        background: none;
+      }
+
+      main {
+        position: relative;
+        z-index: 1;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 26px;
+        padding: 40px;
+        color: #fff;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+      }
+
+      #clock {
+        font-size: 76px;
+        font-weight: 600;
+        letter-spacing: -2px;
+        line-height: 1;
+      }
+      #greeting {
+        font-size: 19px;
+        opacity: 0.92;
+        margin-top: -10px;
+      }
+
+      form {
+        width: min(620px, 92vw);
+      }
+      #q {
+        width: 100%;
+        height: 52px;
+        padding: 0 22px;
+        border: none;
+        border-radius: 26px;
+        font-size: 16px;
+        color: var(--text);
+        background: var(--bg-elev);
+        box-shadow: var(--shadow);
+        outline: none;
+      }
+      #q::placeholder {
+        color: var(--text-dim);
+      }
+      #q:focus {
+        box-shadow: var(--shadow), 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent);
+      }
+
+      #private {
+        display: none;
+        max-width: 460px;
+        text-align: center;
+        font-size: 14px;
+        opacity: 0.9;
+        line-height: 1.5;
+      }
+      body.incognito #private {
+        display: block;
+      }
+    </style>
+    <script type="module" src="newtab.js"></script>
+  </head>
+  <body>
+    <div id="scrim"></div>
+    <main>
+      <div id="clock">--:--</div>
+      <div id="greeting"></div>
+      <form id="search">
+        <input
+          id="q"
+          type="text"
+          placeholder="Search the web or type a URL"
+          spellcheck="false"
+          autocomplete="off"
+          autofocus
+        />
+      </form>
+      <div id="private">
+        🕶️ <strong>You're browsing privately.</strong><br />
+        Pages you visit in this tab won't be saved to your history. This tab has
+        its own temporary session — cookies, logins and site data are erased the
+        moment you close it, and links it opens stay private.
+      </div>
+    </main>
+  </body>
+</html>

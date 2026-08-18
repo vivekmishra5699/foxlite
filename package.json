@@ -1,0 +1,16 @@
+{
+  "name": "foxlite",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri",
+    "blocklist": "node tools/blocklist/build.mjs",
+    "blocklist:ubo": "node tools/blocklist/build.mjs --ubo"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

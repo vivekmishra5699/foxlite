@@ -1,0 +1,49 @@
+[package]
+name = "foxlite"
+version = "0.1.0"
+description = "A minimal, memory-light browser"
+edition = "2021"
+
+[lib]
+name = "foxlite_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# `unstable` enables multiple webviews per window (our chrome + per-tab content).
+# `macos-private-api` enables the transparent window + vibrancy (frosted glass).
+# `devtools` keeps the Web Inspector available in release builds too.
+tauri = { version = "2", features = ["unstable", "macos-private-api", "devtools"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2"
+base64 = "0.22" # decode uploaded wallpapers (already in Tauri's dependency tree)
+# Decompress the embedded EasyList/EasyPrivacy rule set (already in Tauri's
+# dependency tree via tauri-utils' asset compression).
+brotli = { version = "8", default-features = false, features = ["std"] }
+
+# macOS-only native hooks (URL observer, WebContent pid, content blocker).
+# These crates are already compiled as part of Tauri/wry, so they add no
+# build weight; we just enable the WebKit APIs we need.
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = [
+  "std", "NSString", "NSDictionary", "NSObject", "NSURL", "NSError",
+  "NSKeyValueObserving", "NSArray",
+] }
+objc2-web-kit = { version = "0.3", default-features = false, features = [
+  "std", "objc2-app-kit", "block2", "WKWebView", "WKWebViewConfiguration",
+  "WKUserContentController", "WKContentRuleList", "WKContentRuleListStore", "WKPreferences",
+  "WKNavigation",
+] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

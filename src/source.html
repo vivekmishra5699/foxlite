@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>View Source</title>
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="pages.css" />
+    <style>
+      body {
+        overflow: auto;
+      }
+      .bar {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--page-veil);
+        backdrop-filter: blur(12px);
+        font-size: 12.5px;
+      }
+      .bar .url {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--text-dim);
+        user-select: text;
+        -webkit-user-select: text;
+      }
+      .bar input {
+        height: 28px;
+        min-width: 180px;
+        font-size: 12px;
+      }
+      .bar button {
+        height: 28px;
+        padding: 0 12px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        background: var(--card-frost);
+        color: var(--text);
+        font-size: 12px;
+        cursor: pointer;
+      }
+      pre {
+        margin: 0;
+        padding: 12px 0 60px;
+        font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        tab-size: 2;
+        user-select: text;
+        -webkit-user-select: text;
+      }
+      .ln {
+        display: flex;
+      }
+      .ln:hover {
+        background: var(--bg-hover);
+      }
+      .ln .n {
+        flex: none;
+        width: 56px;
+        padding-right: 14px;
+        text-align: right;
+        color: var(--text-dim);
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      .ln .c {
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      #out.nowrap .ln .c {
+        white-space: pre;
+      }
+      button.more {
+        display: block;
+        margin: 14px auto;
+      }
+      .empty {
+        padding: 40px;
+        color: var(--text-dim);
+        text-align: center;
+      }
+      mark {
+        background: color-mix(in srgb, var(--accent) 45%, transparent);
+        color: inherit;
+        border-radius: 2px;
+      }
+    </style>
+    <script type="module" src="source.js"></script>
+  </head>
+  <body>
+    <div class="bar">
+      <b>Source</b>
+      <span class="url" id="url"></span>
+      <input type="text" id="filter" placeholder="Filter lines…" spellcheck="false" />
+      <button id="wrap">Wrap: on</button>
+      <button id="copy">Copy</button>
+    </div>
+    <pre id="out"></pre>
+  </body>
+</html>
