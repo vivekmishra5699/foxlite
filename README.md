@@ -43,11 +43,11 @@ with the rest of the system, and the app itself is a ~5 MB binary.
 
 ## Install
 
-Download `Foxlite_<version>.dmg` from the latest
-[workflow run](../../actions/workflows/release.yml) (Artifacts) or a
-[Release](../../releases), open it and drag **Foxlite** to Applications. The
-app is not notarized yet, so on first launch right-click ▸ Open (or allow it
-in System Settings ▸ Privacy & Security).
+Download `Foxlite_<version>_aarch64.dmg` from the
+[latest release](../../releases/latest) (Apple Silicon, macOS 12+), open it
+and drag **Foxlite** to Applications. The app is not notarized yet, so on
+first launch right-click ▸ Open (or allow it in System Settings ▸ Privacy &
+Security).
 
 ### Build from source
 
