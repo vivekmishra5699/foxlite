@@ -1,167 +1,175 @@
 # Foxlite
 
-A minimal, memory-light browser built on the operating system's WebView via
-[Tauri](https://tauri.app) — **WKWebView** on macOS, **WebView2** on Windows.
-Using the OS engine means real sites (incl. video/MSE) work, the engine is
-shared across apps (low memory), and the binary stays tiny.
+A minimal, memory-light browser for macOS, built on the system WebView
+(**WKWebView**) via [Tauri](https://tauri.app). Using the OS engine means real
+sites — including streaming video (MSE/DRM) — just work, the engine is shared
+with the rest of the system, and the app itself is a ~5 MB binary.
 
-> Earlier prototype built on the Servo engine was dropped: Servo has no Media
-> Source Extensions / DRM, so streaming video couldn't play. Every shipping
-> browser (Zen, Arc, Brave, Orion) is a shell on a production engine — so we are
-> too.
+> **macOS only for now.** The build, CI and installer target macOS while the
+> browser is stabilised on its primary platform. Other platforms (WebView2 on
+> Windows, WebKitGTK on Linux) will be taken up in a separate fork once this is
+> solid; the few `#[cfg(not(target_os = "macos"))]` stubs left in the Rust code
+> are untested placeholders, not supported targets.
+
+## Features
+
+- **Tabs** — new / close / reorder / reopen-closed, middle-click to close,
+  ⌘1…9 to jump, optional **vertical tabs** sidebar (⇧⌘S).
+- **⌃⇥ tab switcher** — Arc-style: cards of your most recently used tabs;
+  hold ⌃, tap ⇥ / ⇧⇥ to move, release to switch, Esc to cancel. Can be set
+  back to in-order cycling.
+- **Address bar** — recent pages on click, history / bookmark / past-search
+  suggestions while typing, inline address completion; search with
+  DuckDuckGo, Google, Bing, Brave, Ecosia, Startpage or Yahoo.
+- **Built-in blocking** — EasyList, EasyPrivacy, Peter Lowe's, NoCoin,
+  URLhaus, phishing lists and the EasyList Cookie List compiled into ~180k
+  WebKit content-blocker rules (ads & trackers, malware/phishing, cookie
+  banners — each toggleable), plus WebKit's pop-up blocker and Safe Browsing
+  warnings.
+- **Memory saver** — background tabs are *hidden* (WebKit throttles them),
+  idle ones are put to sleep (page closed, process terminated when nothing
+  else shares it) and reload on click; per-tab memory in the tab tooltip and
+  Settings ▸ Performance.
+- **Private tabs** (⇧⌘N) — own temporary session wiped on close, no history,
+  links and pop-ups from a private tab stay private.
+- **Home page** with search, clock and wallpaper (presets, URL or upload);
+  bookmarks bar; searchable history; find-in-page; zoom; print; downloads to
+  ~/Downloads with a "Show in Finder" toast; session restore (lazy — only the
+  tab you look at loads).
+- **Appearance** — light / dark / system, accent colour, frosted-glass window
+  (or "reduce transparency" for an opaque frame).
+- **Developer** — Web Inspector (⌥⌘I), View Source (⌥⌘U), reload ignoring
+  cache, custom User-Agent, clear site data.
+
+## Install
+
+Download `Foxlite_<version>.dmg` from the latest
+[workflow run](../../actions/workflows/release.yml) (Artifacts) or a
+[Release](../../releases), open it and drag **Foxlite** to Applications. The
+app is not notarized yet, so on first launch right-click ▸ Open (or allow it
+in System Settings ▸ Privacy & Security).
+
+### Build from source
+
+```bash
+npm install        # one-time: Tauri CLI
+npm run dev        # debug build + run
+npm run build      # release .app + .dmg in src-tauri/target/release/bundle/
+```
+
+Requires a Rust toolchain and Xcode command-line tools. `cd src-tauri &&
+cargo run` works without the Tauri CLI.
+
+## Keyboard shortcuts
+
+| Action | Keys |
+| --- | --- |
+| New tab / private tab / close / reopen | ⌘T · ⇧⌘N · ⌘W · ⇧⌘T |
+| Switch tabs (recent first) | ⌃⇥ · ⌃⇧⇥ |
+| Jump to tab 1–8 / last | ⌘1…8 · ⌘9 |
+| Open location / find in page | ⌘L · ⌘F |
+| Back / forward | ⌘[ · ⌘] |
+| Reload / ignoring cache / stop | ⌘R · ⇧⌘R · ⌘. |
+| Zoom in / out / reset | ⌘+ · ⌘− · ⌘0 |
+| Bookmark page / toggle bookmarks bar | ⌘D · ⇧⌘B |
+| Toggle vertical tabs | ⇧⌘S |
+| History / Settings / Print | ⌘Y · ⌘, · ⌘P |
+| Web Inspector / View source | ⌥⌘I · ⌥⌘U |
 
 ## Architecture
 
+One window hosts a `chrome` webview (our HTML/CSS/JS UI — tab strip across
+the top, or a sidebar down the left with vertical tabs) and one `tab-{id}`
+webview per tab beside it. Rust owns tab state and positions the webviews; the
+chrome talks to it over IPC and re-renders from `state` events. Home,
+settings, history and view-source are bundled local pages loaded into a tab
+webview; the `internal-pages` capability (`local: true`) lets them call into
+the app while external pages in the same webview cannot.
+
+Two chrome features must paint *over* the page, which a strip-sized webview
+can't: the address-bar dropdown and the ⌃⇥ switcher. For those the backend
+temporarily grows the chrome webview over the page and raises it above the
+tab views (`layout.rs` + `native::bring_to_front`), shrinking it back when the
+overlay closes. The switcher's keys come from an app-wide `NSEvent` monitor so
+they work while a page has focus.
+
 ```
-src/                     chrome UI + bundled internal pages
-  index.html/styles.css/chrome.js   tab bar + toolbar + bookmarks/find bars + toasts
-  ipc.js                 20-line IPC bridge (invoke/listen/convertFileSrc) on the
-                         internals Tauri injects — no `withGlobalTauri` bundle
-  util.js                shared helpers (hostOf, wallpaper presets, favicons, debounce)
-  appearance.js          shared theme/accent application
-  theme.css              shared light/dark design tokens
-  pages.css              shared styling for the internal pages
-  newtab.html/js         home page: search, wallpaper, clock
-  settings.html/js       settings (theme/search/blocker/startup/memory/privacy/developer)
-  history.html/js        browsable, searchable history
-  source.html/js         "View Page Source" (⌥⌘U) with filter + copy
+src/                          chrome UI + bundled internal pages
+  index.html / styles.css / chrome.js   tab bar, toolbar, bookmarks/find bars, switcher
+  suggest.js / suggest.css    address-bar & home-search suggestion dropdown
+  newtab, settings, history, source (.html/.js)   internal pages
+  ipc.js                      20-line IPC bridge (no `withGlobalTauri` bundle)
+  util.js, appearance.js, theme.css, pages.css    shared helpers / tokens
 src-tauri/src/
-  main.rs                entry point
-  lib.rs                 app setup: window + chrome webview + menu + wiring
-  state.rs               BrowserState (tabs, active, chrome height) — pure data
-  store.rs               persisted settings+bookmarks (settings.json), session
-                         (session.json), history (append-only history.jsonl) and
-                         favicon cache (favicons.json); one housekeeping thread
-                         with per-file debounce; address-bar suggestion index
-  tabs.rs                controller: create/close/select/discard page webviews,
-                         downloads, target=_blank, memory report; coalesced
-                         `state` pushes (one event per run-loop turn)
-  native.rs              macOS hooks on the WKWebView: KVO URL/back-forward
-                         observer, exact WebContent pid + footprint, page close /
-                         process termination through WebKit, content blocker
-                         (cached compile), reduce-transparency preference
-                         (no-ops on other platforms)
-  blocklist.rs           embedded EasyList/EasyPrivacy rule set (+ tiny fallback)
-tools/blocklist/build.mjs  filter lists → WebKit content-blocker JSON (build step)
-  menu.rs                native menu bar + accelerators + ☰ popup menu
-  commands.rs            IPC commands (thin) called by the chrome + pages
-  layout.rs              positions chrome strip + page webviews; background
-                         tabs are *hidden* (WebKit throttles them), not parked
-  url_util.rs            address-bar text → URL or search; internal-page detection
-capabilities/
-  default.json           IPC for the chrome webview
-  internal-pages.json    IPC for local internal pages only (not external sites)
+  lib.rs                      app setup: window, chrome webview, menu, key monitor
+  state.rs                    BrowserState: tabs, active, MRU order, switcher, overlays
+  tabs.rs                     tab controller: create/close/select/sleep, downloads,
+                              switcher, coalesced `state` pushes
+  layout.rs                   chrome strip/sidebar + page frames, overlays, hidden bg tabs
+  native.rs                   WKWebView hooks: KVO URL observer, WebContent pid, page
+                              teardown via WebKit, content blocker, key monitor, z-order
+  store.rs                    settings.json / session.json / history.jsonl / favicons.json,
+                              one debounced housekeeping thread, suggestions
+  menu.rs · commands.rs · url_util.rs · blocklist.rs · watchdog.rs · selftest.rs
+src-tauri/capabilities/       IPC scopes for the chrome and the internal pages
+tools/blocklist/build.mjs     filter lists → WebKit content-blocker rules (npm run blocklist)
 ```
-
-Home, settings, and history are bundled local pages loaded into a tab webview;
-the `internal-pages` capability (`local: true`) lets them call into the app
-while external `https://` pages in the same webview cannot.
-
-One window hosts a `chrome` webview (our UI) at the top and one `tab-{id}`
-webview per tab below it. Rust owns tab state and positions the webviews; the
-chrome UI talks to it over IPC and re-renders from `state` events.
-
-## Develop
-
-```bash
-npm install            # one-time: fetch the Tauri CLI
-npm run dev            # build + run (debug)
-npm run build          # package a release app (.dmg/.app on macOS)
-```
-
-(Or `cd src-tauri && cargo run` to run without the CLI.)
 
 ## How it stays light
 
-- **Ads, trackers, malware and pop-ups never load.** The standard filter
-  lists — EasyList, EasyPrivacy, Peter Lowe's, NoCoin, URLhaus + phishing
-  host lists and the EasyList Cookie List (the same lists uBlock Origin
-  ships) — are converted at build time (`npm run blocklist`, see
-  `tools/blocklist/`) into ~180k WebKit content-blocker rules in four
-  toggleable categories (ads+trackers, malware/phishing, cookie banners),
-  embedded brotli-compressed (~1.7 MB) and compiled once by WebKit (cached
-  across launches). Blocked requests are dropped in the network layer, so
-  they cost no RAM, CPU, or bandwidth; element-hiding rules remove the empty
-  ad slots and consent overlays. On top of that WebKit's own pop-up blocker
-  refuses `window.open` without a user gesture, and its Safe Browsing check
-  shows a warning before known phishing/malware pages load. This is the same
-  mechanism Safari ad blockers and uBO Lite use; extensions themselves can't
-  run in WKWebView. All of it is in Settings ▸ Performance.
-  (`npm run blocklist:ubo` also pulls uBlock Origin's own GPLv3 lists.)
-- **Background tabs are hidden, not just moved off-screen.** WebKit treats a
-  hidden view as a real background page: `document.hidden`, throttled timers,
-  no rAF, no compositing — the same thing Safari does.
-- **Idle tabs sleep.** Background tabs unused for N minutes have their page
-  closed and — when no other tab or the chrome shares it — their WebContent
-  process terminated through WebKit itself. We read the exact process id from
-  the WKWebView to check sharing. Tabs reload on click.
-- **Lazy session restore.** Restored tabs are created asleep; only the one you
-  look at loads.
-- **No polling.** The address bar tracks single-page-app URL changes through a
-  native KVO observer instead of running JS in the page on a timer.
-- **No extra processes for UI.** The ☰ menu is a native popup, not a webview.
-- **Cheap persistence.** History is append-only (`history.jsonl`); settings,
-  session and the favicon cache are small files with their own debounce, all
-  written by one housekeeping thread — no 1 MB rewrite per navigation. The
-  uploaded wallpaper lives in its own file and is served over a custom
-  `wallpaper://` scheme (raster types only, sandboxed) rather than being
-  JSON-encoded on every save.
-- **No third-party favicon service.** Bookmarks and history show the icon the
-  site itself reported (cached by host); nothing is sent to a lookup service.
-- **UI events are coalesced.** However many navigation/title/favicon changes
-  land in one run-loop turn, the chrome gets one `state` event.
-- **Reduce transparency** (Settings ▸ Appearance, or the macOS accessibility
-  preference) swaps the frosted-glass window for an opaque frame.
-- Per-tab memory shows in the tab tooltip and Settings ▸ Performance.
+- **Blocked requests never leave the network layer** — no RAM, CPU or
+  bandwidth; element-hiding rules remove empty ad slots and consent overlays.
+  Rules are embedded brotli-compressed (~1.7 MB) and compiled once by WebKit.
+- **Background tabs are hidden, not parked off-screen** — WebKit gives them
+  `document.hidden`, throttled timers, no rAF and no compositing.
+- **Idle tabs sleep** — page closed and WebContent process terminated through
+  WebKit (we read the exact pid to check sharing). Restored sessions start
+  asleep.
+- **No polling** — SPA URL changes arrive through a native KVO observer.
+- **No extra UI processes** — the ☰ menu is a native popup; overlays reuse the
+  chrome webview.
+- **Cheap persistence** — append-only `history.jsonl`; small settings /
+  session / favicon files with their own debounce, one housekeeping thread;
+  wallpaper images served from disk over a sandboxed `wallpaper://` scheme.
+- **No third-party favicon service** — icons come from what sites reported.
+- **UI events are coalesced** — one `state` push per run-loop turn.
 
-## Engineering guardrails
+## Contributing
 
-These came out of the 2026-08 audit and are enforced by CI (`.github/workflows/ci.yml`:
-rustfmt, `clippy -D warnings`, unit tests, JS import check, and grep-based tripwires)
-plus the scripted self-test (`FOXLITE_SELFTEST=1 target/debug/foxlite`, debug builds only —
-opens real sites, closes tabs through the chrome's IPC path, sleeps/revives tabs, checks
-the blocker, pop-up blocking, Safe Browsing and private-tab isolation; if a step never
-logs `done`, `sample` the process). Please keep them when contributing:
+CI (`.github/workflows/ci.yml`) runs rustfmt, `clippy -D warnings`, unit
+tests, a JS syntax/import check and grep-based tripwires for the guardrails
+below. Debug builds also ship scripted self-tests — watch the `[foxlite]` log
+lines:
 
-- **Background tabs are hidden, never parked off-screen** (`layout.rs`) — WebKit only
-  throttles hidden views.
-- **Store writes are split and debounced** (`store.rs`): history is append-only
-  `history.jsonl`; settings/session/favicons are small files. Never reintroduce a single
-  store rewritten on every navigation, and never serialise while holding the store lock.
-- **`state` events are coalesced** (`tabs::emit_current`): one push per run-loop turn.
-- **Tab teardown order** (`tabs::teardown_webview`): hide → Tauri `close()` (drops wry's
-  delegates and Tauri's reload-on-terminate handler) → *deferred* WebKit terminate/`_close`
-  on the retained view. Never terminate a page from inside an IPC/menu callout, and never
-  `kill(2)` a pid.
-- **Internal pages are detected by app origin** (`url_util::is_internal`), not by path
-  suffix.
-- **No third-party favicon service; no `withGlobalTauri`; CSP on** — pages use `src/ipc.js`.
-- **`wallpaper://` serves raster types only, sandboxed** — custom schemes count as a
-  local (IPC-privileged) origin.
-- **Anything user-facing that can hang has a watchdog** (`watchdog.rs` writes
-  `hang-<ts>.txt` with a stack sample into the app-data folder).
+```bash
+FOXLITE_SELFTEST=1  target/debug/foxlite   # tab lifecycle on real sites, blocker, private tabs
+FOXLITE_SELFTEST=ui target/debug/foxlite   # ⌃⇥ switcher, address dropdown + overlay, vertical tabs
+```
+
+Guardrails (from the 2026-08 audit — please keep them):
+
+- Background tabs are **hidden**, never parked off-screen (`layout.rs`).
+- Store writes stay **split and debounced** (`store.rs`); history is append-only.
+- `state` events stay **coalesced** (`tabs::emit_current`).
+- Tab teardown order: hide → Tauri `close()` → *deferred* WebKit
+  terminate/`_close` on the retained view; never from inside an IPC/menu
+  callout, never `kill(2)`.
+- Internal pages are detected by **app origin**, not path suffix.
+- No third-party favicon service; no `withGlobalTauri`; CSP on — pages use
+  `src/ipc.js`.
+- `wallpaper://` serves raster types only, sandboxed.
 - The blocklist is generated, not hand-edited: `npm run blocklist` → commit
   `src-tauri/blocklist/rules.jsonl.br`.
 
-## Status / roadmap
-- [x] Window + chrome + page webviews, address bar, back/forward/reload/stop, search
-- [x] Tabs (new/close/switch/reorder/reopen-closed) + keyboard shortcuts via native menu
-- [x] Tab titles + real page favicons + loading state; `target=_blank` opens a tab
-- [x] Home page (search, wallpaper, clock)
-- [x] Settings page (theme, accent, wallpaper, reduce transparency, search
-      engine, blocker, startup, memory saver, privacy, developer)
-- [x] Bookmarks bar + paged/searchable history page, inline address autocomplete
-- [x] Find-in-page (⌘F), zoom (⌘±/⌘0), print (⌘P)
-- [x] Private tabs (⇧⌘N): own temporary session, wiped on close, no history,
-      links/pop-ups from a private tab stay private, badge in the toolbar
-- [x] Downloads to ~/Downloads with a toast + "Show in Finder"
-- [x] Memory saver: sleep idle background tabs (+ "sleep now"), memory readout
-- [x] Session restore (lazy)
-- [x] Ad, tracker, cryptominer, malware/phishing host blocking + cookie-banner
-      hiding (EasyList & co. → WebKit content rules), pop-up blocking, Safe
-      Browsing warnings
-- [x] Developer: Web Inspector (⌥⌘I / Inspect Element), View Source (⌥⌘U),
-      Reload Ignoring Cache (⇧⌘R), custom User-Agent, Clear Site Data
-- [ ] Profiles (isolated cookies/logins) — deferred
-- [ ] Context menus for links (open in new tab), pinned tabs
-- [ ] Distribution (sign/notarize macOS; Windows build)
+## Roadmap
+
+- [ ] Sign & notarize the macOS build
+- [ ] Link context menu (open in new tab), pinned tabs
+- [ ] Profiles (isolated cookies/logins)
+- [ ] Other platforms (separate fork once macOS is stable)
+
+---
+
+Earlier prototype on the Servo engine was dropped: no MSE/DRM meant no
+streaming video. Every shipping browser (Zen, Arc, Brave, Orion) is a shell on
+a production engine — so is this one.

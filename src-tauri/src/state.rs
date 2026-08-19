@@ -68,6 +68,23 @@ pub const DEFAULT_CHROME_HEIGHT: f64 = 88.0;
 /// How many closed tabs to remember for reopening.
 const CLOSED_CAP: usize = 20;
 
+/// How many tabs the ⌃⇥ switcher shows (most recently used first).
+pub const SWITCHER_MAX: usize = 6;
+
+/// The ⌃⇥ tab switcher while it is open: the tabs on offer (most recently
+/// used first — `ids[0]` is the current tab) and which one is highlighted.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Switcher {
+    pub ids: Vec<usize>,
+    pub selected: usize,
+}
+
+impl Switcher {
+    pub fn selected_id(&self) -> Option<usize> {
+        self.ids.get(self.selected).copied()
+    }
+}
+
 /// Largest "View Source" capture we keep in memory (bytes).
 pub const SOURCE_CAP: usize = 8 * 1024 * 1024;
 
@@ -81,6 +98,16 @@ pub struct BrowserState {
     pub recently_closed: Vec<ClosedTab>,
     /// (url, html) captured for the next "View Source" page to display.
     pub pending_source: Option<(String, String)>,
+    /// Tab ids by most recent activation (front = current tab). Tabs that
+    /// were never active (lazily restored session tabs) aren't in here.
+    pub mru: Vec<usize>,
+    /// Open ⌃⇥ switcher, if any.
+    pub switcher: Option<Switcher>,
+    /// Tabs live in a left sidebar (mirrors `Settings::vertical_tabs`).
+    pub vertical_tabs: bool,
+    /// While the chrome shows a dropdown that must reach over the page, the
+    /// (width, height) the chrome webview has to grow to (logical px).
+    pub dropdown_overlay: Option<(f64, f64)>,
     next_id: usize,
 }
 
@@ -130,7 +157,56 @@ impl BrowserState {
         self.deactivate_current();
         self.active = i;
         self.tabs[i].last_active = Some(Instant::now());
+        self.note_active();
         Some(i)
+    }
+
+    /// Record that the tab at `active` is now the most recently used one.
+    /// Call after every change of `active`.
+    pub fn note_active(&mut self) {
+        let Some(id) = self.active_tab().map(|t| t.id) else {
+            return;
+        };
+        self.mru.retain(|&x| x != id);
+        self.mru.insert(0, id);
+    }
+
+    /// Every open tab id, most recently used first; tabs that were never
+    /// active follow in strip order.
+    pub fn mru_order(&self) -> Vec<usize> {
+        let mut order: Vec<usize> = self
+            .mru
+            .iter()
+            .copied()
+            .filter(|id| self.index_of(*id).is_some())
+            .collect();
+        for t in &self.tabs {
+            if !order.contains(&t.id) {
+                order.push(t.id);
+            }
+        }
+        order
+    }
+
+    /// Open the ⌃⇥ switcher (if it isn't already) and move the highlight by
+    /// `delta`. On open, the previously used tab is pre-selected — so a quick
+    /// press-and-release flips back to it. Returns the switcher, or `None`
+    /// when there is nothing to switch between.
+    pub fn switcher_step(&mut self, delta: isize) -> Option<&Switcher> {
+        if self.switcher.is_none() {
+            let ids: Vec<usize> = self.mru_order().into_iter().take(SWITCHER_MAX).collect();
+            if ids.len() < 2 {
+                return None;
+            }
+            // Forward starts on the previous tab; backward on the least recent.
+            let selected = if delta < 0 { ids.len() - 1 } else { 1 };
+            self.switcher = Some(Switcher { ids, selected });
+            return self.switcher.as_ref();
+        }
+        let sw = self.switcher.as_mut()?;
+        let n = sw.ids.len() as isize;
+        sw.selected = (sw.selected as isize + delta).rem_euclid(n) as usize;
+        self.switcher.as_ref()
     }
 
     /// Remove tab `id`, keeping `active` pointing at a sensible neighbour:
@@ -150,6 +226,8 @@ impl BrowserState {
         if let Some(t) = self.tabs.get_mut(active) {
             t.last_active = Some(Instant::now());
         }
+        self.mru.retain(|&x| x != id);
+        self.note_active();
         Some(tab)
     }
 
@@ -260,6 +338,38 @@ mod tests {
         assert!(!s.move_tab(3, 0));
         assert!(s.move_tab(0, 99)); // clamped to last
         assert_eq!(s.tabs.last().unwrap().id, 0);
+    }
+
+    #[test]
+    fn mru_tracks_activation_and_switcher_cycles() {
+        let mut s = state(4);
+        for id in [0, 1, 2, 3] {
+            s.activate(id);
+        }
+        s.activate(1);
+        assert_eq!(s.mru_order(), [1, 3, 2, 0]);
+        // Open forward: previous tab pre-selected; cycles and wraps.
+        let sw = s.switcher_step(1).unwrap().clone();
+        assert_eq!((sw.ids.clone(), sw.selected), (vec![1, 3, 2, 0], 1));
+        assert_eq!(s.switcher_step(1).unwrap().selected, 2);
+        assert_eq!(s.switcher_step(1).unwrap().selected, 3);
+        assert_eq!(s.switcher_step(1).unwrap().selected, 0);
+        assert_eq!(s.switcher_step(-1).unwrap().selected, 3);
+        s.switcher = None;
+        // Open backward: least recent pre-selected.
+        assert_eq!(s.switcher_step(-1).unwrap().selected, 3);
+        s.switcher = None;
+        // Closing drops the tab from the order; the neighbour becomes current.
+        s.remove(1);
+        assert_eq!(s.mru_order()[0], s.active_tab().unwrap().id);
+        assert!(!s.mru.contains(&1));
+        // Never-activated tabs trail in strip order; a lone tab can't switch.
+        let mut one = state(1);
+        assert!(one.switcher_step(1).is_none());
+        let mut fresh = state(3);
+        fresh.active = 2;
+        fresh.note_active();
+        assert_eq!(fresh.mru_order(), [2, 0, 1]);
     }
 
     #[test]

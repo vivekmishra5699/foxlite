@@ -4,6 +4,7 @@
 
 import { applyAppearance } from "./appearance.js";
 import { invoke, listen } from "./ipc.js";
+import { attachSuggest } from "./suggest.js";
 import { PRESETS, wallpaperSrc } from "./util.js";
 
 const incognito = new URLSearchParams(location.search).has("incognito");
@@ -49,9 +50,17 @@ function tickClock() {
 }
 document.addEventListener("visibilitychange", tickClock);
 
+// Search box: recent pages on focus, history/bookmark matches while typing
+// (suggest.js); ↵ / click opens in this tab.
+const qEl = document.getElementById("q");
+attachSuggest(qEl, {
+  onNavigate: (text) => invoke("navigate", { input: text }),
+  limit: 6,
+  showOnFocus: false, // the box is auto-focused on load; open on click/typing
+});
 document.getElementById("search").addEventListener("submit", (e) => {
   e.preventDefault();
-  const q = document.getElementById("q").value;
+  const q = qEl.value;
   if (q.trim()) invoke("navigate", { input: q });
 });
 

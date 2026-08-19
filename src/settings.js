@@ -2,7 +2,7 @@
 // broadcasts `settings-changed` so the chrome + other pages update live.
 
 import { applyAppearance } from "./appearance.js";
-import { invoke } from "./ipc.js";
+import { invoke, listen } from "./ipc.js";
 import { PRESETS, hostOf, paintFavicon, wallpaperCss } from "./util.js";
 
 // Curated accent palette + a custom picker.
@@ -288,6 +288,8 @@ function wireControls() {
   bind("engine", "change", "search_engine", (t) => t.value);
   bind("zoom", "change", "default_zoom", (t) => parseFloat(t.value));
   bind("bmbar", "change", "show_bookmarks_bar", (t) => t.checked);
+  bind("verticaltabs", "change", "vertical_tabs", (t) => t.checked);
+  bind("mrutabs", "change", "mru_tab_switching", (t) => t.checked);
   bind("discard", "change", "discard_after_min", (t) => parseInt(t.value, 10));
   bind("blockads", "change", "block_ads", (t) => t.checked);
   bind("blockmalware", "change", "block_malware", (t) => t.checked);
@@ -364,6 +366,13 @@ function wireControls() {
 
 async function init() {
   wireControls();
+  // Toggles flipped from the menu (⇧⌘B / ⇧⌘S) while this page is open.
+  listen("settings-changed", async () => {
+    const s = await invoke("get_settings");
+    settings = s;
+    $("bmbar").checked = s.show_bookmarks_bar;
+    $("verticaltabs").checked = !!s.vertical_tabs;
+  });
   const s = await invoke("get_settings");
   settings = s;
   renderTheme();
@@ -371,6 +380,8 @@ async function init() {
   $("engine").value = s.search_engine;
   $("zoom").value = String(s.default_zoom);
   $("bmbar").checked = s.show_bookmarks_bar;
+  $("verticaltabs").checked = !!s.vertical_tabs;
+  $("mrutabs").checked = !!s.mru_tab_switching;
   $("discard").value = String(s.discard_after_min);
   $("blockads").checked = !!s.block_ads;
   $("blockmalware").checked = !!s.block_malware;

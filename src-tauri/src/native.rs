@@ -28,6 +28,21 @@ pub struct NavState {
 
 pub type NavHandler = Box<dyn Fn(NavState) + Send + 'static>;
 
+/// Keyboard events the app-wide key monitor reports (see `install_key_monitor`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyAction {
+    /// ⌃⇥ (+1) / ⌃⇧⇥ (−1).
+    Cycle(isize),
+    /// Escape.
+    Escape,
+    /// The Control key was released (any flags change that leaves it up).
+    ControlReleased,
+}
+
+/// Returns whether the event was consumed (then it reaches neither the menu
+/// nor the focused webview). Always called on the main thread.
+pub type KeyHandler = Box<dyn Fn(KeyAction) -> bool + 'static>;
+
 /// State of the ad/tracker blocker rule list.
 #[derive(Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -58,6 +73,7 @@ mod imp {
     use objc2::{
         class, define_class, msg_send, sel, AllocAnyThread, DefinedClass, MainThreadMarker,
     };
+    use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags, NSEventType, NSView};
     use objc2_foundation::{
         ns_string, NSDictionary, NSError, NSKeyValueChangeKey, NSKeyValueObservingOptions,
         NSObjectNSKeyValueObserverRegistration, NSObjectProtocol, NSString,
@@ -65,7 +81,7 @@ mod imp {
     use objc2_web_kit::{WKContentRuleList, WKContentRuleListStore, WKWebView};
     use tauri::{AppHandle, Webview};
 
-    use super::{BlockerStatus, NavHandler, NavState};
+    use super::{BlockerStatus, KeyAction, KeyHandler, NavHandler, NavState};
     use crate::blocklist::RuleSet;
 
     // ---- helpers ------------------------------------------------------------
@@ -173,6 +189,8 @@ mod imp {
         /// (category, compiled list) pairs, attached per the user's toggles.
         static RULES: RefCell<Vec<(String, Retained<WKContentRuleList>)>> = const { RefCell::new(Vec::new()) };
         static BLOCKER: Cell<BlockerStatus> = const { Cell::new(BlockerStatus::Compiling) };
+        /// The installed NSEvent local monitor (kept alive for the app's lifetime).
+        static KEY_MONITOR: RefCell<Option<Retained<AnyObject>>> = const { RefCell::new(None) };
     }
 
     pub fn observe_nav(webview: &Webview, handler: NavHandler) {
@@ -190,6 +208,116 @@ mod imp {
 
     pub fn forget(label: &str) {
         OBSERVERS.with(|o| o.borrow_mut().remove(label));
+    }
+
+    // ---- view order ---------------------------------------------------------
+
+    /// Put the webview's NSView above its siblings (child webviews stack in
+    /// creation order, so a later tab would otherwise cover the chrome's
+    /// overlays). No-op when it is already the topmost subview. Reorders in
+    /// place (`sortSubviews`) rather than removing/re-adding the view, so
+    /// WebKit never sees the view leave the window.
+    pub fn bring_to_front(webview: &Webview) {
+        let label = webview.label().to_string();
+        with_view(webview, move |view| {
+            let ns: &NSView = view;
+            let Some(parent) = (unsafe { ns.superview() }) else {
+                return;
+            };
+            let subs = parent.subviews();
+            if subs
+                .lastObject()
+                .is_some_and(|last| std::ptr::eq(&*last as *const NSView, ns as *const NSView))
+            {
+                return;
+            }
+            unsafe extern "C-unwind" fn last_wins(
+                a: std::ptr::NonNull<NSView>,
+                b: std::ptr::NonNull<NSView>,
+                target: *mut c_void,
+            ) -> objc2_foundation::NSComparisonResult {
+                use objc2_foundation::NSComparisonResult::*;
+                if a.as_ptr() as *mut c_void == target {
+                    Descending
+                } else if b.as_ptr() as *mut c_void == target {
+                    Ascending
+                } else {
+                    Same
+                }
+            }
+            unsafe {
+                parent.sortSubviewsUsingFunction_context(
+                    last_wins,
+                    ns as *const NSView as *mut c_void,
+                );
+            }
+            crate::dbg_log!(
+                "raised {label} above {} sibling view(s) (now topmost: {})",
+                subs.len() - 1,
+                parent
+                    .subviews()
+                    .lastObject()
+                    .is_some_and(|last| std::ptr::eq(&*last as *const NSView, ns as *const NSView))
+            );
+        });
+    }
+
+    // ---- key monitor --------------------------------------------------------
+
+    /// Watch ⌃⇥ / ⌃⇧⇥ / Esc / Control-release app-wide, whichever webview has
+    /// focus — a local NSEvent monitor sees key events before the menu and
+    /// before WebKit, and can swallow them. Drives the MRU tab switcher (hold
+    /// ⌃, tap ⇥ to move, release ⌃ to switch). Install once, on the main
+    /// thread.
+    pub fn install_key_monitor(handler: KeyHandler) {
+        const KEY_TAB: u16 = 48;
+        const KEY_ESC: u16 = 53;
+        let block = RcBlock::new(move |ev: std::ptr::NonNull<NSEvent>| -> *mut NSEvent {
+            // SAFETY: AppKit hands us a live event for the duration of the call.
+            let event = unsafe { ev.as_ref() };
+            let flags = event
+                .modifierFlags()
+                .intersection(NSEventModifierFlags::DeviceIndependentFlagsMask);
+            let consumed = match event.r#type() {
+                NSEventType::KeyDown => {
+                    let code = event.keyCode();
+                    let ctrl_only = flags.contains(NSEventModifierFlags::Control)
+                        && !flags.contains(NSEventModifierFlags::Command)
+                        && !flags.contains(NSEventModifierFlags::Option);
+                    if code == KEY_TAB && ctrl_only {
+                        let delta = if flags.contains(NSEventModifierFlags::Shift) {
+                            -1
+                        } else {
+                            1
+                        };
+                        handler(KeyAction::Cycle(delta))
+                    } else if code == KEY_ESC {
+                        handler(KeyAction::Escape)
+                    } else {
+                        false
+                    }
+                }
+                NSEventType::FlagsChanged => {
+                    if !flags.contains(NSEventModifierFlags::Control) {
+                        handler(KeyAction::ControlReleased);
+                    }
+                    false // modifier changes always pass through
+                }
+                _ => false,
+            };
+            if consumed {
+                null_mut()
+            } else {
+                ev.as_ptr()
+            }
+        });
+        let monitor = unsafe {
+            NSEvent::addLocalMonitorForEventsMatchingMask_handler(
+                NSEventMask::KeyDown | NSEventMask::FlagsChanged,
+                &block,
+            )
+        };
+        KEY_MONITOR.with(|m| *m.borrow_mut() = monitor);
     }
 
     // ---- process / memory ---------------------------------------------------
@@ -607,10 +735,12 @@ mod imp {
 
 #[cfg(not(target_os = "macos"))]
 mod imp {
-    use super::{BlockerStatus, NavHandler};
+    use super::{BlockerStatus, KeyHandler, NavHandler};
     use tauri::{AppHandle, Webview};
 
     pub fn observe_nav(_webview: &Webview, _handler: NavHandler) {}
+    pub fn bring_to_front(_webview: &Webview) {}
+    pub fn install_key_monitor(_handler: KeyHandler) {}
     pub fn forget(_label: &str) {}
     pub fn web_process_pid(_webview: &Webview) -> Option<i32> {
         None

@@ -11,6 +11,14 @@
 //! background memory-pressure handling — the same thing Safari does with its
 //! background tabs.
 //!
+//! Two arrangements: tabs across the top (chrome = a strip of `chrome_height`
+//! over the full width, page below) or vertical tabs (chrome = a sidebar of
+//! `SIDEBAR_WIDTH` down the left, page to its right). Either way the chrome is
+//! one rectangle, so page and chrome never overlap — except while the chrome
+//! shows an **overlay** (address-bar dropdown, ⌃⇥ switcher): then the chrome
+//! webview temporarily grows over the page and is raised above the tab views
+//! (`native::bring_to_front`), shrinking back when the overlay closes.
+//!
 //! Frames/visibility are only pushed to a webview when they actually change:
 //! every `setFrame` on a (transparent) WKWebView is a repaint, and on macOS a
 //! repaint of a layer whose contents aren't ready yet can composite as a black
@@ -21,6 +29,7 @@ use std::sync::Mutex;
 
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Window};
 
+use crate::native;
 use crate::state::{self, BrowserState, DEFAULT_CHROME_HEIGHT};
 
 /// Logical (width, height) of the window.
@@ -34,6 +43,11 @@ pub fn window_size(window: &Window) -> Option<(f64, f64)> {
 /// window frame — the Zen look. The frame colour shows through this margin.
 const GAP: f64 = 8.0;
 
+/// Width (logical px) of the chrome sidebar when tabs are vertical. Must match
+/// `--sidebar-w` in `styles.css` (the sidebar lays itself out at exactly the
+/// webview's width).
+pub const SIDEBAR_WIDTH: f64 = 256.0;
+
 /// Position + size of the content region (below the chrome of height `chrome_h`).
 /// The page is inset by `GAP` on the left, right and bottom, and sits `GAP`
 /// below the chrome, so the frame colour frames it on all sides.
@@ -43,6 +57,51 @@ pub fn content_bounds(w: f64, h: f64, chrome_h: f64) -> (LogicalPosition<f64>, L
     let width = (w - GAP * 2.0).max(0.0);
     let height = (h - chrome_h - GAP * 2.0).max(0.0);
     (LogicalPosition::new(x, y), LogicalSize::new(width, height))
+}
+
+/// Content region with vertical tabs: right of the sidebar, inset by `GAP`
+/// on every side so the frame colour shows between sidebar and page too.
+pub fn content_bounds_vertical(w: f64, h: f64) -> (LogicalPosition<f64>, LogicalSize<f64>) {
+    let width = (w - SIDEBAR_WIDTH - GAP * 2.0).max(0.0);
+    let height = (h - GAP * 2.0).max(0.0);
+    (
+        LogicalPosition::new(SIDEBAR_WIDTH + GAP, GAP),
+        LogicalSize::new(width, height),
+    )
+}
+
+/// The chrome's own (non-overlay) frame and the page frame for a window of
+/// `w`×`h`: (chrome size, page position, page size).
+pub fn frames(
+    state: &BrowserState,
+    w: f64,
+    h: f64,
+) -> (LogicalSize<f64>, LogicalPosition<f64>, LogicalSize<f64>) {
+    if state.vertical_tabs {
+        let (pos, size) = content_bounds_vertical(w, h);
+        (LogicalSize::new(SIDEBAR_WIDTH.min(w), h), pos, size)
+    } else {
+        let chrome_h = if state.chrome_height > 0.0 {
+            state.chrome_height
+        } else {
+            DEFAULT_CHROME_HEIGHT
+        };
+        let (pos, size) = content_bounds(w, h, chrome_h);
+        (LogicalSize::new(w, chrome_h.min(h)), pos, size)
+    }
+}
+
+/// Size the chrome webview must have right now: its base frame, grown to
+/// cover an open overlay (the whole window for the ⌃⇥ switcher; whatever the
+/// dropdown asked for, clamped to the window).
+fn chrome_size(state: &BrowserState, base: LogicalSize<f64>, w: f64, h: f64) -> LogicalSize<f64> {
+    if state.switcher.is_some() {
+        return LogicalSize::new(w, h);
+    }
+    match state.dropdown_overlay {
+        Some((ow, oh)) => LogicalSize::new(ow.max(base.width).min(w), oh.max(base.height).min(h)),
+        None => base,
+    }
 }
 
 /// Last state applied to a webview.
@@ -169,24 +228,22 @@ pub fn apply(app: &AppHandle, state: &BrowserState) {
         return;
     };
 
-    let chrome_h = if state.chrome_height > 0.0 {
-        state.chrome_height
-    } else {
-        DEFAULT_CHROME_HEIGHT
-    };
+    let (base, pos, size) = frames(state, w, h);
+    let chrome_sz = chrome_size(state, base, w, h);
+    let overlay = chrome_sz != base;
 
     if let Some(chrome) = app.get_webview("chrome") {
-        place_visible(
-            app,
-            &chrome,
-            LogicalPosition::new(0.0, 0.0),
-            LogicalSize::new(w, chrome_h),
-        );
+        // Newer tab webviews sit above the chrome in the view hierarchy; an
+        // overlay has to paint over the page, so raise the chrome first
+        // (no-op when it already is on top).
+        if overlay {
+            native::bring_to_front(&chrome);
+        }
+        place_visible(app, &chrome, LogicalPosition::new(0.0, 0.0), chrome_sz);
     }
 
     // Show the active tab first, then hide the rest, so there is never a
     // moment with no page visible.
-    let (pos, size) = content_bounds(w, h, chrome_h);
     if let Some(active) = state.active_tab() {
         if let Some(view) = app.get_webview(&active.label()) {
             place_visible(app, &view, pos, size);
@@ -206,4 +263,50 @@ pub fn apply(app: &AppHandle, state: &BrowserState) {
 pub fn relayout(app: &AppHandle) {
     let state = state::lock(app);
     apply(app, &state);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frames_follow_mode_and_overlay() {
+        let mut s = BrowserState::new();
+        s.chrome_height = 100.0;
+        let (chrome, pos, size) = frames(&s, 1000.0, 700.0);
+        assert_eq!((chrome.width, chrome.height), (1000.0, 100.0));
+        assert_eq!((pos.x, pos.y), (GAP, 100.0 + GAP));
+        assert_eq!(
+            (size.width, size.height),
+            (1000.0 - 2.0 * GAP, 700.0 - 100.0 - 2.0 * GAP)
+        );
+        assert_eq!(chrome_size(&s, chrome, 1000.0, 700.0), chrome);
+
+        s.dropdown_overlay = Some((600.0, 500.0));
+        let sz = chrome_size(&s, chrome, 1000.0, 700.0);
+        assert_eq!((sz.width, sz.height), (1000.0, 500.0)); // never narrower than the strip
+        s.dropdown_overlay = Some((2000.0, 5000.0));
+        let sz = chrome_size(&s, chrome, 1000.0, 700.0);
+        assert_eq!((sz.width, sz.height), (1000.0, 700.0)); // clamped to the window
+        s.dropdown_overlay = None;
+
+        s.vertical_tabs = true;
+        let (chrome, pos, size) = frames(&s, 1000.0, 700.0);
+        assert_eq!((chrome.width, chrome.height), (SIDEBAR_WIDTH, 700.0));
+        assert_eq!((pos.x, pos.y), (SIDEBAR_WIDTH + GAP, GAP));
+        assert_eq!(
+            (size.width, size.height),
+            (1000.0 - SIDEBAR_WIDTH - 2.0 * GAP, 700.0 - 2.0 * GAP)
+        );
+        s.dropdown_overlay = Some((600.0, 300.0));
+        let sz = chrome_size(&s, chrome, 1000.0, 700.0);
+        assert_eq!((sz.width, sz.height), (600.0, 700.0)); // grows in width only
+
+        s.switcher = Some(crate::state::Switcher {
+            ids: vec![0, 1],
+            selected: 1,
+        });
+        let sz = chrome_size(&s, chrome, 1000.0, 700.0);
+        assert_eq!((sz.width, sz.height), (1000.0, 700.0));
+    }
 }

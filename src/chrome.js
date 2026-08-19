@@ -10,7 +10,8 @@
 
 import { applyAppearance } from "./appearance.js";
 import { invoke, listen } from "./ipc.js";
-import { debounce, hostOf, paintFavicon } from "./util.js";
+import { attachSuggest } from "./suggest.js";
+import { hostOf, paintFavicon } from "./util.js";
 
 const tabsEl = document.getElementById("tabs");
 const addressEl = document.getElementById("address");
@@ -23,6 +24,9 @@ const findInput = document.getElementById("find-input");
 const menuBtn = document.getElementById("menu");
 const toastEl = document.getElementById("toast");
 const tabbar = document.getElementById("tabbar");
+const chromeEl = document.getElementById("chrome");
+const switcherEl = document.getElementById("switcher");
+const swPanel = document.getElementById("sw-panel");
 
 let current = { tabs: [], active: 0 };
 let chromeData = { settings: null, bookmarks: [] };
@@ -93,22 +97,33 @@ function activeTab() {
 }
 
 // ---- chrome height -----------------------------------------------------------
-// Measure the strips instead of hard-coding their heights: whenever any strip
-// resizes or is shown/hidden, report the sum so the backend can position the
-// page webview. (The backend ignores reports that don't change the height.)
-const strips = ["tabbar", "toolbar", "bookmarks", "findbar"].map((id) =>
-  document.getElementById(id)
-);
+// Measure the chrome instead of hard-coding strip heights: whenever it
+// resizes (a bar is shown/hidden), report the height so the backend can
+// position the page webview. (The backend ignores reports that don't change
+// the height.) With vertical tabs the chrome is a full-height sidebar whose
+// width the backend owns, so nothing is reported.
 let reportedHeight = 0;
 function reportHeight() {
-  const height = strips.reduce((sum, el) => sum + el.offsetHeight, 0);
+  if (document.body.classList.contains("vertical")) return;
+  const height = chromeEl.offsetHeight;
   if (height > 0 && height !== reportedHeight) {
     reportedHeight = height;
     invoke("set_chrome_height", { height });
   }
 }
-const heightObserver = new ResizeObserver(reportHeight);
-for (const el of strips) heightObserver.observe(el);
+new ResizeObserver(reportHeight).observe(chromeEl);
+
+/// Flip between the tab strip and the tab sidebar (Settings / View menu).
+function setVertical(on) {
+  if (document.body.classList.contains("vertical") === on) return;
+  document.body.classList.toggle("vertical", on);
+  suggest.hide();
+  // Back to the strip: the backend needs the strip's height again.
+  if (!on) {
+    reportedHeight = 0;
+    reportHeight();
+  }
+}
 
 // ---- internal pages: label + icon ------------------------------------------
 const PAGE_META = {
@@ -212,9 +227,8 @@ tabsEl.addEventListener("dragover", (e) => {
   e.preventDefault();
   e.stopPropagation();
   e.dataTransfer.dropEffect = "move";
-  const before = e.offsetX < tabEl.offsetWidth / 2;
   clearDropMarks();
-  tabEl.classList.add(before ? "drop-before" : "drop-after");
+  tabEl.classList.add(dropBefore(e, tabEl) ? "drop-before" : "drop-after");
 });
 tabsEl.addEventListener("drop", (e) => {
   const tabEl = e.target.closest(".tab");
@@ -227,11 +241,18 @@ tabsEl.addEventListener("drop", (e) => {
   const from = current.tabs.findIndex((t) => t.id === dragged);
   const targetIdx = current.tabs.findIndex((t) => t.id === targetId);
   if (from < 0 || targetIdx < 0 || dragged === targetId) return;
-  const before = e.offsetX < tabEl.offsetWidth / 2;
-  let to = before ? targetIdx : targetIdx + 1;
+  let to = dropBefore(e, tabEl) ? targetIdx : targetIdx + 1;
   if (from < to) to -= 1; // account for removal shifting indices
   invoke("move_tab", { id: dragged, to });
 });
+
+/// Drop in the first half of a tab (left half in the strip, top half in the
+/// sidebar) inserts before it.
+function dropBefore(e, tabEl) {
+  return document.body.classList.contains("vertical")
+    ? e.offsetY < tabEl.offsetHeight / 2
+    : e.offsetX < tabEl.offsetWidth / 2;
+}
 
 function clearDropMarks() {
   for (const { el } of tabEls.values()) el.classList.remove("drop-before", "drop-after");
@@ -374,6 +395,7 @@ function applyChromeData() {
       "show-bookmarks",
       !!chromeData.settings.show_bookmarks_bar
     );
+    setVertical(!!chromeData.settings.vertical_tabs);
   }
   renderBookmarks();
   renderAddressAndStar();
@@ -438,6 +460,45 @@ function hideToast() {
   toastEl.classList.remove("show");
 }
 
+// ---- ⌃⇥ switcher (most recently used tabs) -----------------------------------
+// The backend owns the list + highlight (keys arrive through a native event
+// monitor, so this works while a page has focus) and pushes `switcher` events;
+// we just draw cards. Clicking a card picks it, clicking outside cancels.
+function renderSwitcher(view) {
+  if (!view) {
+    switcherEl.classList.remove("show");
+    swPanel.replaceChildren();
+    return;
+  }
+  swPanel.replaceChildren(
+    ...view.tabs.map((tab, i) => {
+      const card = document.createElement("div");
+      card.className = "sw-card";
+      card.dataset.id = tab.id;
+      if (i === view.selected) card.classList.add("sel");
+      if (i === 0) card.classList.add("current");
+      const fav = document.createElement("span");
+      fav.className = "sw-fav";
+      paintTabIcon(fav, tabIconKey(tab).replace(/^spin$/, "globe"));
+      fav.className = "sw-fav";
+      const title = document.createElement("span");
+      title.className = "sw-title";
+      title.textContent = tabLabel(tab);
+      const host = document.createElement("span");
+      host.className = "sw-host";
+      host.textContent = tab.url ? hostOf(tab.url) : tab.incognito ? "Private" : "Foxlite";
+      card.append(fav, title, host);
+      return card;
+    })
+  );
+  switcherEl.classList.add("show");
+}
+switcherEl.addEventListener("mousedown", (e) => {
+  const card = e.target.closest(".sw-card");
+  if (card) invoke("switcher_pick", { id: parseInt(card.dataset.id, 10) });
+  else invoke("switcher_cancel");
+});
+
 // ---- events ------------------------------------------------------------------
 function focusAddress() {
   addressEl.focus();
@@ -459,6 +520,7 @@ async function init() {
       if (event.payload === "find") toggleFind(true);
       else if (event.payload === "focus-address") focusAddress();
     }),
+    listen("switcher", (event) => renderSwitcher(event.payload)),
     // Debug self-test relay: the backend can ask the chrome to issue a command
     // over the real IPC path (only the backend can emit to this webview).
     listen("selftest", (event) => {
@@ -543,12 +605,28 @@ window.addEventListener(
   true
 );
 
-// ---- address bar: enter / escape / inline autocomplete ----------------------
-addressEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    invoke("navigate", { input: addressEl.value });
+// ---- address bar: suggestions dropdown + inline completion -------------------
+// The dropdown must reach below the strip (over the page), and the chrome
+// webview is only as tall as the strip — so while it is open we ask the
+// backend to grow the chrome webview to cover it (`set_chrome_overlay`), and
+// to shrink back when it closes.
+const suggest = attachSuggest(addressEl, {
+  onNavigate: (text) => {
+    invoke("navigate", { input: text });
     addressEl.blur();
-  } else if (e.key === "Escape") {
+  },
+  onLayout: (rect) => {
+    invoke(
+      "set_chrome_overlay",
+      rect
+        ? { width: Math.ceil(rect.right + 16), height: Math.ceil(rect.bottom + 16) }
+        : { width: 0, height: 0 }
+    );
+  },
+});
+// Esc with the dropdown already closed: revert to the page URL and leave.
+addressEl.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
     addressEl.value = activeTab()?.url || "";
     addressEl.blur();
   }
@@ -556,30 +634,6 @@ addressEl.addEventListener("keydown", (e) => {
 // Select-all on focus (click or ⌘L), like every browser.
 addressEl.addEventListener("focus", () => {
   requestAnimationFrame(() => addressEl.select());
-});
-// Inline completion, debounced so fast typing doesn't queue a lookup per key.
-const suggestFor = debounce(async (typed) => {
-  const s = await invoke("suggest", { prefix: typed });
-  if (
-    !s ||
-    addressEl.value !== typed || // user kept typing
-    document.activeElement !== addressEl ||
-    !s.toLowerCase().startsWith(typed.toLowerCase())
-  ) {
-    return;
-  }
-  addressEl.value = typed + s.slice(typed.length);
-  addressEl.setSelectionRange(typed.length, s.length);
-}, 60);
-addressEl.addEventListener("input", (e) => {
-  // Only complete while typing forward at the end of the text.
-  if (
-    !e.inputType?.startsWith("insert") ||
-    addressEl.selectionEnd !== addressEl.value.length
-  ) {
-    return;
-  }
-  suggestFor(addressEl.value);
 });
 
 // ---- find bar wiring ---------------------------------------------------------

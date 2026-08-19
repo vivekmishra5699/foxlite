@@ -18,7 +18,7 @@
 //! The same thread also drives a periodic tick (used for the memory saver) so
 //! the app runs one housekeeping thread instead of several.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -101,6 +101,12 @@ pub struct Settings {
     /// Appearance: opaque window instead of the frosted-glass vibrancy (less
     /// GPU/compositing work). Takes effect on the next launch.
     pub reduce_transparency: bool,
+    /// Tabs in a sidebar on the left (with the address bar) instead of a strip
+    /// across the top.
+    pub vertical_tabs: bool,
+    /// ⌃⇥ cycles tabs by most recent use (Arc-style switcher, hold ⌃ to pick)
+    /// instead of strip order.
+    pub mru_tab_switching: bool,
 }
 
 impl Default for Settings {
@@ -121,6 +127,8 @@ impl Default for Settings {
             devtools: true,
             user_agent: String::new(),
             reduce_transparency: false,
+            vertical_tabs: false,
+            mru_tab_switching: true,
         }
     }
 }
@@ -155,6 +163,18 @@ pub struct HistoryPage {
     pub total: usize,
     /// host → favicon URL for the hosts in `entries`.
     pub favicons: HashMap<String, String>,
+}
+
+/// One row of the address-bar / home-page suggestion dropdown.
+#[derive(Clone, Serialize, PartialEq, Debug)]
+pub struct Suggestion {
+    /// "search" (a past web search — `query` holds the terms), "bookmark" or
+    /// "history".
+    pub kind: &'static str,
+    pub url: String,
+    pub title: String,
+    pub favicon: String,
+    pub query: String,
 }
 
 /// A tab of the last session (for "restore tabs on startup").
@@ -356,6 +376,94 @@ impl Store {
             }
         }
         best.map(|(_, s)| s.to_string())
+    }
+
+    /// Dropdown suggestions for what the user typed (or, for an empty query,
+    /// the most recent distinct pages): bookmarks + history, newest first,
+    /// de-duplicated by URL. Typed text matches case-insensitively against
+    /// URL and title, every whitespace-separated word must match; candidates
+    /// whose host (sans `www.`) starts with the text rank first, then by
+    /// visit count, then recency. Past web searches come back as `kind:
+    /// "search"` with the search terms in `query`.
+    pub fn suggestions(&self, query: &str, limit: usize) -> Vec<Suggestion> {
+        let q = query.trim().to_lowercase();
+        let words: Vec<&str> = q.split_whitespace().collect();
+        let mut seen: HashSet<&str> = HashSet::new();
+        let mut out = Vec::new();
+        if words.is_empty() {
+            for e in self.history.iter().rev() {
+                if seen.insert(e.url.as_str()) {
+                    out.push(self.suggestion("history", &e.url, &e.title));
+                    if out.len() >= limit {
+                        break;
+                    }
+                }
+            }
+            return out;
+        }
+        let matches = |url: &str, title: &str| {
+            let (u, t) = (url.to_lowercase(), title.to_lowercase());
+            words.iter().all(|w| u.contains(w) || t.contains(w))
+        };
+        // Rank: host-prefix match (2) > bare-URL prefix (1) > substring (0).
+        let prefix_rank = |url: &str| -> u8 {
+            let bare = url
+                .strip_prefix("https://")
+                .or_else(|| url.strip_prefix("http://"))
+                .unwrap_or(url);
+            let bare = bare.strip_prefix("www.").unwrap_or(bare);
+            let host = bare.split('/').next().unwrap_or(bare);
+            if host.to_lowercase().starts_with(&q) {
+                2
+            } else if bare.to_lowercase().starts_with(&q) {
+                1
+            } else {
+                0
+            }
+        };
+        // key: (is_bookmark, prefix_rank, visits, last_visit)
+        let mut cands: Vec<((bool, u8, usize, u64), Suggestion)> = Vec::new();
+        for b in &self.bookmarks {
+            if matches(&b.url, &b.title) && seen.insert(b.url.as_str()) {
+                cands.push((
+                    (true, prefix_rank(&b.url), 0, 0),
+                    self.suggestion("bookmark", &b.url, &b.title),
+                ));
+            }
+        }
+        for e in self.history.iter().rev() {
+            if !seen.contains(e.url.as_str()) && matches(&e.url, &e.title) {
+                seen.insert(e.url.as_str());
+                let visits = self.url_counts.get(&e.url).copied().unwrap_or(1);
+                cands.push((
+                    (false, prefix_rank(&e.url), visits, e.ts),
+                    self.suggestion("history", &e.url, &e.title),
+                ));
+            }
+        }
+        cands.sort_by_key(|c| std::cmp::Reverse(c.0));
+        cands.truncate(limit);
+        cands.into_iter().map(|(_, s)| s).collect()
+    }
+
+    fn suggestion(&self, kind: &'static str, url: &str, title: &str) -> Suggestion {
+        let favicon = self.favicon_for(url).unwrap_or_default();
+        if let Some(query) = crate::url_util::search_query_of(url) {
+            return Suggestion {
+                kind: "search",
+                url: url.to_string(),
+                title: query.clone(),
+                favicon,
+                query,
+            };
+        }
+        Suggestion {
+            kind,
+            url: url.to_string(),
+            title: title.to_string(),
+            favicon,
+            query: String::new(),
+        }
     }
 
     pub fn is_bookmarked(&self, url: &str) -> bool {
@@ -992,6 +1100,49 @@ mod tests {
         );
         assert_eq!(s.suggest("g"), None);
         assert_eq!(s.suggest("GITH").as_deref(), Some("github.com"));
+    }
+
+    #[test]
+    fn suggestions_recent_then_ranked() {
+        let mut s = store_with(&[
+            "https://github.com/a",
+            "https://duckduckgo.com/?q=rust+lang",
+            "https://gitlab.com/",
+            "https://github.com/a",
+            "https://news.example/git-story",
+        ]);
+        s.set_title_for("https://news.example/git-story", "A story about git");
+        // Empty query: newest first, de-duplicated.
+        let recent = s.suggestions("", 10);
+        assert_eq!(
+            recent.iter().map(|x| x.url.as_str()).collect::<Vec<_>>(),
+            [
+                "https://news.example/git-story",
+                "https://github.com/a",
+                "https://gitlab.com/",
+                "https://duckduckgo.com/?q=rust+lang",
+            ]
+        );
+        assert_eq!(recent[3].kind, "search");
+        assert_eq!(recent[3].query, "rust lang");
+        assert_eq!(recent[3].title, "rust lang");
+        assert_eq!(s.suggestions("", 2).len(), 2);
+        // Typed: host-prefix matches first (github: 2 visits beats gitlab),
+        // then the title-only match.
+        let git = s.suggestions("git", 10);
+        assert_eq!(
+            git.iter().map(|x| x.url.as_str()).collect::<Vec<_>>(),
+            [
+                "https://github.com/a",
+                "https://gitlab.com/",
+                "https://news.example/git-story",
+            ]
+        );
+        // Bookmarks win; multi-word matches need every word.
+        s.add_bookmark("GitLab", "https://gitlab.com/");
+        assert_eq!(s.suggestions("git", 10)[0].kind, "bookmark");
+        assert_eq!(s.suggestions("story git", 10).len(), 1);
+        assert!(s.suggestions("zzz", 10).is_empty());
     }
 
     #[test]

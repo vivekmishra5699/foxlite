@@ -5,10 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Foxlite</title>
     <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="suggest.css" />
     <link rel="stylesheet" href="styles.css" />
     <script type="module" src="chrome.js"></script>
   </head>
   <body>
+    <!-- Everything that is "the chrome" lives in #chrome (it paints the frosted
+         veil / frame colour); the body itself is transparent so that when the
+         chrome webview is temporarily grown over the page for a dropdown or the
+         ⌃⇥ switcher, only the overlay is visible. -->
+    <div id="chrome">
+    <!-- Vertical tabs: the traffic lights get their own row above the toolbar. -->
+    <div id="titlebar-spacer" data-tauri-drag-region></div>
     <!-- Tab bar shares the title-bar row with the macOS traffic lights, so it
          is the window's drag region. -->
     <div id="tabbar" data-tauri-drag-region>
@@ -46,7 +54,10 @@
       <button id="find-next" class="icon" title="Next"></button>
       <button id="find-close" class="icon" title="Close (Esc)"></button>
     </div>
+    </div>
     <!-- Transient notice (downloads). -->
     <div id="toast" role="status"></div>
+    <!-- ⌃⇥ tab switcher: cards of the most recently used tabs, over the page. -->
+    <div id="switcher"><div class="sw-panel" id="sw-panel"></div></div>
   </body>
 </html>

@@ -315,6 +315,289 @@ const STEPS: &[Step] = &[
     },
 ];
 
+/// Run `js` in the chrome webview and log the (JSON) result under `what`.
+fn probe_chrome(app: &AppHandle, what: &'static str, js: &str) {
+    if let Some(v) = tauri::Manager::get_webview(app, "chrome") {
+        let _ = v.eval_with_callback(js, move |r| {
+            crate::dbg_log!("selftest: {what} = {r}");
+        });
+    }
+}
+
+/// Log the logical frames of the chrome and the active tab's webview.
+fn log_frames(app: &AppHandle, what: &'static str) {
+    let scale = tauri::Manager::get_window(app, "main")
+        .and_then(|w| w.scale_factor().ok())
+        .unwrap_or(1.0);
+    let mut out = String::new();
+    let label = state::lock(app)
+        .active_tab()
+        .map(|t| t.label())
+        .unwrap_or_default();
+    for l in ["chrome", label.as_str()] {
+        if let Some(v) = tauri::Manager::get_webview(app, l) {
+            if let (Ok(p), Ok(s)) = (v.position(), v.size()) {
+                out.push_str(&format!(
+                    " {l}: ({:.0},{:.0}) {:.0}x{:.0}",
+                    p.x as f64 / scale,
+                    p.y as f64 / scale,
+                    s.width as f64 / scale,
+                    s.height as f64 / scale
+                ));
+            }
+        }
+    }
+    crate::dbg_log!("selftest: frames {what}:{out}");
+}
+
+/// `FOXLITE_SELFTEST=ui`: the chrome-level features — ⌃⇥ switcher, address
+/// bar suggestions (incl. the over-the-page overlay), vertical tabs.
+const UI_STEPS: &[Step] = &[
+    Step {
+        at_ms: 2500,
+        name: "open example.com",
+        run: |app| tabs::open_external(app, "https://example.com/".parse().unwrap()),
+    },
+    Step {
+        at_ms: 4500,
+        name: "open wikipedia",
+        run: |app| {
+            tabs::open_external(
+                app,
+                "https://en.wikipedia.org/wiki/Web_browser".parse().unwrap(),
+            )
+        },
+    },
+    Step {
+        at_ms: 8000,
+        name: "switcher: open (⌃⇥)",
+        run: |app| {
+            crate::dbg_log!("selftest: mru order = {:?}", state::lock(app).mru_order());
+            tabs::switcher_step(app, 1);
+        },
+    },
+    Step {
+        at_ms: 8700,
+        name: "switcher: probe (expect 3 cards, previous tab selected)",
+        run: |app| {
+            log_frames(app, "switcher open (chrome should cover the window)");
+            probe_chrome(
+                app,
+                "switcher cards:selected-id",
+                "document.querySelectorAll('#switcher.show .sw-card').length + ':' + (document.querySelector('.sw-card.sel')||{}).dataset?.id",
+            );
+        },
+    },
+    Step {
+        at_ms: 9200,
+        name: "switcher: step again (⌃⇥)",
+        run: |app| tabs::switcher_step(app, 1),
+    },
+    Step {
+        at_ms: 9700,
+        name: "switcher: commit (⌃ released) → least recent tab (home)",
+        run: |app| {
+            tabs::switcher_commit(app);
+        },
+    },
+    Step {
+        at_ms: 10500,
+        name: "switcher: probe closed + active tab",
+        run: |app| {
+            let st = state::lock(app);
+            crate::dbg_log!(
+                "selftest: after commit active = {} ({}), switcher open = {}",
+                st.active,
+                st.active_tab().map(|t| t.url.clone()).unwrap_or_default(),
+                st.switcher.is_some()
+            );
+            drop(st);
+            log_frames(app, "switcher closed (chrome back to strip)");
+            probe_chrome(
+                app,
+                "switcher shown",
+                "document.getElementById('switcher').classList.contains('show')",
+            );
+        },
+    },
+    Step {
+        at_ms: 11500,
+        name: "dropdown: focus the address bar",
+        run: |app| {
+            if let Some(v) = tauri::Manager::get_webview(app, "chrome") {
+                let _ = v.eval("document.getElementById('address').focus()");
+            }
+        },
+    },
+    Step {
+        at_ms: 12500,
+        name: "dropdown: probe recent rows + overlay",
+        run: |app| {
+            crate::dbg_log!(
+                "selftest: dropdown_overlay = {:?}",
+                state::lock(app).dropdown_overlay
+            );
+            log_frames(app, "dropdown open (chrome should be taller)");
+            probe_chrome(
+                app,
+                "recent rows",
+                "document.querySelectorAll('.suggest.show .sg-row').length",
+            );
+        },
+    },
+    Step {
+        at_ms: 13000,
+        name: "dropdown: type 'wiki'",
+        run: |app| {
+            if let Some(v) = tauri::Manager::get_webview(app, "chrome") {
+                let _ = v.eval("(function(){var a=document.getElementById('address');a.value='wiki';a.dispatchEvent(new InputEvent('input',{inputType:'insertText',data:'i'}));})()");
+            }
+        },
+    },
+    Step {
+        at_ms: 13800,
+        name: "dropdown: probe typed rows",
+        run: |app| {
+            probe_chrome(
+                app,
+                "typed rows (first title, count)",
+                "(document.querySelector('.suggest.show .sg-row .sg-title')||{}).textContent + ':' + document.querySelectorAll('.suggest.show .sg-row').length",
+            );
+        },
+    },
+    Step {
+        at_ms: 14300,
+        name: "dropdown: ↓",
+        run: |app| {
+            if let Some(v) = tauri::Manager::get_webview(app, "chrome") {
+                let _ = v.eval("(function(){var a=document.getElementById('address');a.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));})()");
+            }
+        },
+    },
+    Step {
+        at_ms: 14600,
+        name: "dropdown: probe after ↓",
+        run: |app| {
+            probe_chrome(
+                app,
+                "after ↓: value | sel title | rows",
+                "document.getElementById('address').value + ' | ' + (document.querySelector('.sg-row.sel .sg-title')||{}).textContent + ' | ' + document.querySelectorAll('.suggest.show .sg-row').length",
+            );
+        },
+    },
+    Step {
+        at_ms: 14900,
+        name: "dropdown: ↵ (open the highlighted row in this tab)",
+        run: |app| {
+            if let Some(v) = tauri::Manager::get_webview(app, "chrome") {
+                let _ = v.eval("(function(){var a=document.getElementById('address');a.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));})()");
+            }
+        },
+    },
+    Step {
+        at_ms: 16500,
+        name: "dropdown: probe closed + navigated",
+        run: |app| {
+            let st = state::lock(app);
+            crate::dbg_log!(
+                "selftest: active url = {} , dropdown_overlay = {:?}",
+                st.active_tab().map(|t| t.url.clone()).unwrap_or_default(),
+                st.dropdown_overlay
+            );
+            drop(st);
+            log_frames(app, "dropdown closed");
+        },
+    },
+    Step {
+        at_ms: 17000,
+        name: "dropdown: no-match text 'zzqq' then ↓ ↵ (expect a web search)",
+        run: |app| {
+            if let Some(v) = tauri::Manager::get_webview(app, "chrome") {
+                let _ = v.eval("(function(){var a=document.getElementById('address');a.focus();a.value='zzqq';a.dispatchEvent(new InputEvent('input',{inputType:'insertText',data:'q'}));setTimeout(function(){a.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));window.__after=a.value+' | rows '+document.querySelectorAll('.suggest.show .sg-row').length;a.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));},400);})()");
+            }
+        },
+    },
+    Step {
+        at_ms: 19000,
+        name: "dropdown: probe no-match navigation",
+        run: |app| {
+            crate::dbg_log!(
+                "selftest: active url = {}",
+                state::lock(app)
+                    .active_tab()
+                    .map(|t| t.url.clone())
+                    .unwrap_or_default()
+            );
+            probe_chrome(app, "after ↓ (no match)", "window.__after");
+        },
+    },
+    Step {
+        at_ms: 19500,
+        name: "vertical tabs: on",
+        run: |app| crate::commands::toggle_vertical_tabs(app.clone()),
+    },
+    Step {
+        at_ms: 20500,
+        name: "vertical tabs: probe",
+        run: |app| {
+            log_frames(app, "vertical (chrome 256 wide, page at x=264)");
+            probe_chrome(
+                app,
+                "vertical class, #chrome size, tabs, toolbar h, address w, tab w×h, tabbar h, bookmarks h",
+                "[document.body.classList.contains('vertical'), document.getElementById('chrome').offsetWidth + 'x' + document.getElementById('chrome').offsetHeight, document.querySelectorAll('.tab').length, document.getElementById('toolbar').offsetHeight, document.getElementById('address').offsetWidth, document.querySelector('.tab').offsetWidth + 'x' + document.querySelector('.tab').offsetHeight, document.getElementById('tabbar').offsetHeight, document.getElementById('bookmarks').offsetHeight].join(' ')",
+            );
+        },
+    },
+    Step {
+        at_ms: 21500,
+        name: "vertical tabs: dropdown overlay in sidebar mode",
+        run: |app| {
+            if let Some(v) = tauri::Manager::get_webview(app, "chrome") {
+                let _ = v.eval("document.getElementById('address').focus()");
+            }
+        },
+    },
+    Step {
+        at_ms: 22500,
+        name: "vertical tabs: probe dropdown overlay",
+        run: |app| {
+            crate::dbg_log!(
+                "selftest: dropdown_overlay = {:?}",
+                state::lock(app).dropdown_overlay
+            );
+            log_frames(app, "vertical + dropdown (chrome wider than 256)");
+            if let Some(v) = tauri::Manager::get_webview(app, "chrome") {
+                let _ = v.eval("document.getElementById('address').blur()");
+            }
+        },
+    },
+    Step {
+        at_ms: 23500,
+        name: "vertical tabs: off",
+        run: |app| crate::commands::toggle_vertical_tabs(app.clone()),
+    },
+    Step {
+        at_ms: 24500,
+        name: "vertical tabs: probe restored strip",
+        run: |app| {
+            log_frames(app, "horizontal again (chrome full width, ~88 tall)");
+            probe_chrome(
+                app,
+                "vertical class",
+                "document.body.classList.contains('vertical')",
+            );
+        },
+    },
+    Step {
+        at_ms: 25500,
+        name: "quit",
+        run: |app| {
+            crate::dbg_log!("UI SELFTEST PASSED");
+            app.exit(0);
+        },
+    },
+];
+
 pub fn maybe_start(app: &AppHandle) {
     // Watchdog check: freeze the main thread for 75 s and expect a hang-*.txt.
     if std::env::var_os("FOXLITE_SELFTEST_STALL").is_some() {
@@ -325,15 +608,16 @@ pub fn maybe_start(app: &AppHandle) {
         });
         return;
     }
-    if std::env::var_os("FOXLITE_SELFTEST").is_none() {
+    let Some(mode) = std::env::var_os("FOXLITE_SELFTEST") else {
         return;
-    }
+    };
+    let steps: &'static [Step] = if mode == "ui" { UI_STEPS } else { STEPS };
     let app = app.clone();
     std::thread::Builder::new()
         .name("foxlite-selftest".into())
         .spawn(move || {
             let start = std::time::Instant::now();
-            for step in STEPS {
+            for step in steps {
                 let at = Duration::from_millis(step.at_ms);
                 if let Some(wait) = at.checked_sub(start.elapsed()) {
                     std::thread::sleep(wait);

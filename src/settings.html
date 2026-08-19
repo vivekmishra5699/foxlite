@@ -601,6 +601,41 @@
           </div>
 
           <div class="card">
+            <div class="row">
+              <div>
+                <div class="label">Vertical tabs</div>
+                <div class="desc">
+                  Tabs in a sidebar on the left, with the address bar — instead of
+                  a strip across the top (<kbd>⇧⌘S</kbd>).
+                </div>
+              </div>
+              <div class="ctl">
+                <label class="switch">
+                  <input type="checkbox" id="verticaltabs" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="label">Switch tabs by recent use</div>
+                <div class="desc">
+                  <kbd>⌃⇥</kbd> opens a switcher of your most recently used tabs:
+                  keep <kbd>⌃</kbd> held and tap <kbd>⇥</kbd> / <kbd>⇧⇥</kbd> to move,
+                  release to switch, <kbd>Esc</kbd> to cancel. Off: <kbd>⌃⇥</kbd>
+                  cycles tabs in order.
+                </div>
+              </div>
+              <div class="ctl">
+                <label class="switch">
+                  <input type="checkbox" id="mrutabs" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
             <div class="row stack">
               <div>
                 <div class="label">Home wallpaper</div>
@@ -648,9 +683,11 @@
               <div>
                 <div class="label">Address bar</div>
                 <div class="desc">
-                  Type a site or a search. Foxlite completes addresses inline from
-                  your history and bookmarks — press <kbd>↵</kbd> to accept,
-                  <kbd>⌫</kbd> to dismiss.
+                  Type a site or a search. Clicking the address bar (or the home
+                  page's search box) lists your recent pages; typing shows matching
+                  history, bookmarks and past searches — <kbd>↑</kbd>/<kbd>↓</kbd>
+                  to pick, <kbd>↵</kbd> to open. Addresses also complete inline
+                  (<kbd>↵</kbd> accepts, <kbd>⌫</kbd> dismisses).
                 </div>
               </div>
             </div>
@@ -863,7 +900,8 @@
               <div class="key"><span>New private tab</span><kbd>⇧⌘N</kbd></div>
               <div class="key"><span>Close tab</span><kbd>⌘W</kbd></div>
               <div class="key"><span>Reopen closed tab</span><kbd>⇧⌘T</kbd></div>
-              <div class="key"><span>Next / previous tab</span><kbd>⌃⇥ · ⌃⇧⇥</kbd></div>
+              <div class="key"><span>Switch tabs (recent first)</span><kbd>⌃⇥ · ⌃⇧⇥</kbd></div>
+              <div class="key"><span>Toggle vertical tabs</span><kbd>⇧⌘S</kbd></div>
               <div class="key"><span>Jump to tab 1–8, last</span><kbd>⌘1…8 · ⌘9</kbd></div>
               <div class="key"><span>Open location</span><kbd>⌘L</kbd></div>
               <div class="key"><span>Find in page</span><kbd>⌘F</kbd></div>
@@ -890,8 +928,8 @@
             <div class="about">
               <b>Foxlite</b> · version 0.1.0<br />
               A minimal, memory-light browser on the system WebView (WKWebView on
-              macOS, WebView2 on Windows) — real sites, including streaming
-              video, just work while memory stays low.
+              macOS) — real sites, including streaming video, just work while
+              memory stays low. macOS only for now.
               <div class="chips" id="aboutchips"></div>
             </div>
           </div>

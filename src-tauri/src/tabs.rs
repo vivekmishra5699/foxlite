@@ -187,6 +187,13 @@ fn new_tab_record(default_zoom: f64, id: usize, url: String, page: String, incog
 /// Register a new tab in state and make it active; returns its id.
 fn register_tab(app: &AppHandle, url: String, page: String, incognito: bool) -> usize {
     let default_zoom = store::lock(app).settings.default_zoom;
+    // A tab opened straight on a URL (link in new tab, bookmark middle-click,
+    // reopen, dropped link) is a visit too — `apply_url` only records URL
+    // *changes*, so record the starting page here.
+    if !url.is_empty() && !incognito {
+        store::lock(app).record_visit(&url, "");
+        store::touch(app, Dirty::History);
+    }
     let mut state = state::lock(app);
     state.deactivate_current(); // the tab being backgrounded starts its idle clock
     let id = state.allocate_id();
@@ -194,6 +201,7 @@ fn register_tab(app: &AppHandle, url: String, page: String, incognito: bool) -> 
         .tabs
         .push(new_tab_record(default_zoom, id, url, page, incognito));
     state.active = state.tabs.len() - 1;
+    state.note_active();
     id
 }
 
@@ -287,13 +295,15 @@ fn build_tab(app: &AppHandle, id: usize) -> bool {
     let Some((w, h)) = layout::window_size(&window) else {
         return false;
     };
-    let (chrome_h, target, incognito, transparent) = {
+    let (pos, size, target, incognito, transparent) = {
         let state = state::lock(app);
         let Some(tab) = state.tab(id) else {
             return false;
         };
+        let (_, pos, size) = layout::frames(&state, w, h);
         (
-            state.chrome_height,
+            pos,
+            size,
             target_for(&tab.url, &tab.page, tab.incognito),
             tab.incognito,
             is_frosted_page(&tab.url, &tab.page),
@@ -363,7 +373,6 @@ fn build_tab(app: &AppHandle, id: usize) -> bool {
         builder = builder.user_agent(&user_agent);
     }
 
-    let (pos, size) = layout::content_bounds(w, h, chrome_h);
     if window.add_child(builder, pos, size).is_err() {
         return false;
     }
@@ -454,6 +463,7 @@ pub fn open_restored(app: &AppHandle, session: Vec<SessionTab>, active: usize) {
             state.tabs.push(tab);
         }
         state.active = state.index_of(active_id).unwrap_or(0);
+        state.note_active();
         active_id
     };
     if !build_tab(app, active_id) {
@@ -738,7 +748,7 @@ pub fn select_index(app: &AppHandle, index: usize, last: bool) {
     }
 }
 
-/// Cycle to the next/previous tab (Ctrl+Tab / Ctrl+Shift+Tab, ⌘⇧] / ⌘⇧[).
+/// Cycle to the next/previous tab in strip order.
 pub fn select_relative(app: &AppHandle, delta: isize) {
     let id = {
         let state = state::lock(app);
@@ -750,6 +760,147 @@ pub fn select_relative(app: &AppHandle, delta: isize) {
         state.tabs[i].id
     };
     select_tab(app, id);
+}
+
+/// Menu "Show Next/Previous Tab": by recent use when the MRU switcher is on
+/// (one step, applied immediately — there is no modifier to release), else in
+/// strip order.
+pub fn cycle(app: &AppHandle, delta: isize) {
+    if store::lock(app).settings.mru_tab_switching {
+        switcher_step(app, delta);
+        switcher_commit(app);
+    } else {
+        select_relative(app, delta);
+    }
+}
+
+// ---- ⌃⇥ tab switcher (most recently used) -----------------------------------
+
+/// What the chrome renders for the switcher (`null` when it closes).
+#[derive(serde::Serialize, Clone)]
+struct SwitcherView {
+    tabs: Vec<Tab>,
+    selected: usize,
+}
+
+fn emit_switcher(app: &AppHandle, view: Option<SwitcherView>) {
+    let _ = app.emit_to("chrome", "switcher", view);
+}
+
+/// Key monitor callback: ⌃⇥ steps the switcher (opening it on the first
+/// press), Esc cancels it, releasing ⌃ commits. Returns whether the key was
+/// consumed — ⌃⇥ only when MRU switching is on (else the menu's strip-order
+/// accelerator handles it), Esc only while the switcher is open.
+pub fn on_key(app: &AppHandle, action: native::KeyAction) -> bool {
+    match action {
+        native::KeyAction::Cycle(delta) => {
+            if !store::lock(app).settings.mru_tab_switching {
+                return false;
+            }
+            switcher_step(app, delta);
+            true
+        }
+        native::KeyAction::Escape => switcher_cancel(app),
+        native::KeyAction::ControlReleased => {
+            switcher_commit(app);
+            false
+        }
+    }
+}
+
+/// Open the switcher (previous tab pre-selected) or move its highlight by
+/// `delta`. Grows the chrome over the whole window so the overlay can paint
+/// above the page. No-op with fewer than two tabs.
+pub fn switcher_step(app: &AppHandle, delta: isize) {
+    let (view, opened) = {
+        let mut state = state::lock(app);
+        let was_open = state.switcher.is_some();
+        let Some(sw) = state.switcher_step(delta).cloned() else {
+            return;
+        };
+        let tabs = sw
+            .ids
+            .iter()
+            .filter_map(|id| state.tab(*id).cloned())
+            .collect();
+        if !was_open {
+            crate::dbg_log!("switcher open: {:?} selected {}", sw.ids, sw.selected);
+        }
+        (
+            SwitcherView {
+                tabs,
+                selected: sw.selected,
+            },
+            !was_open,
+        )
+    };
+    if opened {
+        layout::relayout(app);
+    }
+    emit_switcher(app, Some(view));
+}
+
+/// Close the switcher and switch to the highlighted tab (or `pick`).
+fn switcher_close(app: &AppHandle, pick: Option<usize>) -> bool {
+    let target = {
+        let mut state = state::lock(app);
+        let Some(sw) = state.switcher.take() else {
+            return false;
+        };
+        pick.or_else(|| sw.selected_id())
+    };
+    layout::relayout(app);
+    emit_switcher(app, None);
+    if let Some(id) = target {
+        crate::dbg_log!("switcher commit → tab {id}");
+        select_tab(app, id);
+    }
+    true
+}
+
+/// Switch to the highlighted tab (⌃ released). Returns whether it was open.
+pub fn switcher_commit(app: &AppHandle) -> bool {
+    switcher_close(app, None)
+}
+
+/// Switch to `id` (a card was clicked).
+pub fn switcher_pick(app: &AppHandle, id: usize) {
+    switcher_close(app, Some(id));
+}
+
+/// Close the switcher without switching (Esc, click outside, focus lost).
+pub fn switcher_cancel(app: &AppHandle) -> bool {
+    let open = state::lock(app).switcher.take().is_some();
+    if open {
+        layout::relayout(app);
+        emit_switcher(app, None);
+    }
+    open
+}
+
+/// The chrome asks for room over the page for its address-bar dropdown
+/// (`None` when it closes). Coordinates are the chrome webview's size.
+pub fn set_dropdown_overlay(app: &AppHandle, size: Option<(f64, f64)>) {
+    {
+        let mut state = state::lock(app);
+        if state.dropdown_overlay == size {
+            return;
+        }
+        state.dropdown_overlay = size;
+    }
+    layout::relayout(app);
+}
+
+/// Settings changed the tab arrangement: relayout + repaint.
+pub fn set_vertical_tabs(app: &AppHandle, vertical: bool) {
+    {
+        let mut state = state::lock(app);
+        if state.vertical_tabs == vertical {
+            return;
+        }
+        state.vertical_tabs = vertical;
+    }
+    layout::relayout(app);
 }
 
 /// Move the tab `id` to position `to` (drag-reorder in the tab bar).

@@ -1,0 +1,80 @@
+/* Suggestion dropdown (suggest.js) — used under the address bar in the chrome
+   and under the search box on the new-tab page. Tokens from theme.css. */
+
+.suggest {
+  position: fixed;
+  z-index: 15;
+  display: none;
+  flex-direction: column;
+  padding: 6px;
+  max-height: 400px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--bg-elev);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  text-shadow: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.suggest.show {
+  display: flex;
+}
+.sg-head {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.sg-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  flex: none;
+  padding: 0 10px;
+  border-radius: 9px;
+  cursor: default;
+}
+.sg-row.sel {
+  background: var(--accent-soft);
+}
+.sg-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+}
+.sg-row.sel .sg-icon {
+  color: var(--accent);
+}
+.sg-icon img,
+.sg-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.sg-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+.sg-url {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.sg-url::before {
+  content: "— ";
+}

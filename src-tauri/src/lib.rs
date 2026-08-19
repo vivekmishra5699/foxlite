@@ -36,8 +36,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use tauri::{
-    webview::WebviewBuilder, AppHandle, LogicalPosition, LogicalSize, Manager, RunEvent,
-    WebviewUrl, Window,
+    webview::WebviewBuilder, AppHandle, LogicalPosition, Manager, RunEvent, WebviewUrl, Window,
 };
 
 use state::BrowserState;
@@ -55,6 +54,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::navigate,
             commands::suggest,
+            commands::suggestions,
+            commands::switcher_pick,
+            commands::switcher_cancel,
+            commands::set_chrome_overlay,
+            commands::toggle_vertical_tabs,
             commands::new_tab,
             commands::new_incognito_tab,
             commands::open_url_new_tab,
@@ -106,7 +110,11 @@ pub fn run() {
             add_chrome(&handle, &window, opaque, dark)?;
             open_first_tabs(&handle, &startup, session, session_active);
             start_background_work(&handle);
-            watch_resize(&handle, &window);
+            watch_window(&handle, &window);
+            // ⌃⇥ / ⌃⇧⇥ / Esc / ⌃-release for the MRU tab switcher, whichever
+            // webview has focus.
+            let key_handle = handle.clone();
+            native::install_key_monitor(Box::new(move |action| tabs::on_key(&key_handle, action)));
             #[cfg(debug_assertions)]
             selftest::maybe_start(&handle);
             Ok(())
@@ -167,6 +175,11 @@ fn init_services(handle: &AppHandle) -> (String, Vec<store::SessionTab>, usize, 
         || store.settings.reduce_transparency
         || native::system_reduce_transparency();
     let dark = store.settings.theme != "light";
+    handle
+        .state::<Mutex<BrowserState>>()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .vertical_tabs = store.settings.vertical_tabs;
     handle.manage(Mutex::new(store));
 
     // One housekeeping thread: debounced saves + the 30 s tick that runs the
@@ -231,9 +244,9 @@ fn build_window(handle: &AppHandle, opaque: bool, dark: bool) -> tauri::Result<W
 /// drop events fire in the chrome (lets you drag a link from a page onto the
 /// tab bar to open it in a new tab).
 fn add_chrome(handle: &AppHandle, window: &Window, opaque: bool, dark: bool) -> tauri::Result<()> {
-    let (w, _h) = layout::window_size(window).unwrap_or((1200.0, 800.0));
+    let (w, h) = layout::window_size(window).unwrap_or((1200.0, 800.0));
     let chrome_pos = LogicalPosition::new(0.0, 0.0);
-    let chrome_size = LogicalSize::new(w, state::DEFAULT_CHROME_HEIGHT);
+    let (chrome_size, _, _) = layout::frames(&state::lock(handle), w, h);
     // The chrome learns the platform (traffic-light inset, shortcut glyphs)
     // and whether it runs opaque from the query string.
     let query = format!(
@@ -291,12 +304,15 @@ fn start_background_work(handle: &AppHandle) {
     let _ = handle;
 }
 
-/// Keep the layout correct as the window resizes.
-fn watch_resize(handle: &AppHandle, window: &Window) {
-    let resize_handle = handle.clone();
-    window.on_window_event(move |event| {
-        if matches!(event, tauri::WindowEvent::Resized(_)) {
-            layout::relayout(&resize_handle);
+/// Keep the layout correct as the window resizes; drop the ⌃⇥ switcher if
+/// the window loses focus while it is open (the ⌃ release would go elsewhere).
+fn watch_window(handle: &AppHandle, window: &Window) {
+    let h = handle.clone();
+    window.on_window_event(move |event| match event {
+        tauri::WindowEvent::Resized(_) => layout::relayout(&h),
+        tauri::WindowEvent::Focused(false) => {
+            tabs::switcher_cancel(&h);
         }
+        _ => {}
     });
 }

@@ -125,6 +125,33 @@ fn app_path(url: &str) -> Option<String> {
     local.then(|| u.path().to_string())
 }
 
+/// If `url` is a results page of a search engine we know, the search terms
+/// (so history can show "rust lang" with a magnifier instead of the raw
+/// `duckduckgo.com/?q=rust+lang`).
+pub fn search_query_of(url: &str) -> Option<String> {
+    let u = Url::parse(url).ok()?;
+    let host = u.host_str()?.to_ascii_lowercase();
+    let host = host.strip_prefix("www.").unwrap_or(&host);
+    let param = if host == "duckduckgo.com"
+        || host == "bing.com"
+        || host == "search.brave.com"
+        || host == "ecosia.org"
+        || (host.starts_with("google.") && u.path() == "/search")
+    {
+        "q"
+    } else if host == "startpage.com" {
+        "query"
+    } else if host == "search.yahoo.com" {
+        "p"
+    } else {
+        return None;
+    };
+    u.query_pairs()
+        .find(|(k, _)| k == param)
+        .map(|(_, v)| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
 /// Which bundled page (e.g. "settings.html") an internal URL points at, ignoring
 /// query/fragment. `None` for anything else (including all external URLs).
 pub fn page_of(url: &str) -> Option<&'static str> {
@@ -180,6 +207,25 @@ mod tests {
             .unwrap()
             .as_str()
             .starts_with("https://duckduckgo.com/"));
+    }
+
+    #[test]
+    fn search_queries_are_recognised() {
+        assert_eq!(
+            search_query_of("https://duckduckgo.com/?q=rust+lang&ia=web").as_deref(),
+            Some("rust lang")
+        );
+        assert_eq!(
+            search_query_of("https://www.google.com/search?q=cats&hl=en").as_deref(),
+            Some("cats")
+        );
+        assert_eq!(
+            search_query_of("https://www.startpage.com/sp/search?query=x").as_deref(),
+            Some("x")
+        );
+        assert_eq!(search_query_of("https://www.google.com/maps?q=cats"), None);
+        assert_eq!(search_query_of("https://duckduckgo.com/?q="), None);
+        assert_eq!(search_query_of("https://example.com/?q=cats"), None);
     }
 
     #[test]

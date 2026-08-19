@@ -16,27 +16,19 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "app",
+      "dmg"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/icon.icns"
     ],
     "macOS": {
       "signingIdentity": "-",
       "minimumSystemVersion": "12.0"
-    },
-    "windows": {
-      "webviewInstallMode": {
-        "type": "downloadBootstrapper"
-      }
-    },
-    "linux": {
-      "deb": {
-        "depends": []
-      }
     },
     "shortDescription": "A minimal, memory-light browser",
     "longDescription": "Foxlite is a lightweight browser shell on the operating system's WebView with built-in ad, tracker and malware blocking, a memory saver, and private tabs.",

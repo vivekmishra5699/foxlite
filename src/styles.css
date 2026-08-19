@@ -6,17 +6,28 @@
    icon buttons — float on top as soft, rounded surfaces. No hard divider lines:
    strips are separated by breathing room, not borders.
 
-   Strip heights here MUST match the constants in chrome.js so the reported
-   chrome height lines up with what's rendered. */
+   The chrome measures itself (#chrome) and reports its height to the backend,
+   so strip heights here are free to change; the sidebar width in vertical
+   mode (--sidebar-w) is the one value the backend owns (layout::SIDEBAR_WIDTH). */
 
 html,
 body {
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
-  /* Transparent chrome webview reveals the window's frosted-glass vibrancy;
-     a faint veil keeps controls readable over it. */
+  /* The page itself paints nothing: the chrome webview is grown over the
+     page for dropdowns / the ⌃⇥ switcher, and that extra area must stay
+     see-through. #chrome carries the strip's own backdrop. */
+  background: transparent;
+}
+/* Transparent chrome webview reveals the window's frosted-glass vibrancy; a
+   faint veil keeps controls readable over it. */
+#chrome {
   background: var(--chrome-veil);
+}
+/* Vertical-tabs-only row for the traffic lights (see body.vertical below). */
+#titlebar-spacer {
+  display: none;
 }
 /* Private tab: badge next to the address bar + a tinted address pill. */
 #private-badge {
@@ -38,7 +49,7 @@ body.private #address {
   border-color: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 /* "Reduce transparency": the window is an opaque frame, so paint it solid. */
-body.opaque {
+body.opaque #chrome {
   background: var(--frame);
 }
 
@@ -412,4 +423,228 @@ body.show-find #findbar {
 #toast button.toast-x:hover {
   background: var(--ctl-hover);
   color: var(--text);
+}
+
+/* ---- Vertical tabs: the chrome is a sidebar down the left ----
+   The backend sizes the chrome webview to exactly --sidebar-w (must match
+   layout::SIDEBAR_WIDTH) × the window height and puts the page to its right.
+   Same DOM, re-flowed: traffic-light row, toolbar (nav row + address row),
+   find bar, tab list (+ "new tab"), bookmarks list. */
+:root {
+  --sidebar-w: 256px;
+}
+body.vertical #chrome {
+  display: flex;
+  flex-direction: column;
+  width: var(--sidebar-w);
+  height: 100%;
+  overflow: hidden;
+}
+body.vertical #titlebar-spacer {
+  display: block;
+  flex: none;
+  height: 38px;
+  order: 0;
+}
+body.vertical #toolbar {
+  order: 1;
+  flex: none;
+  flex-wrap: wrap;
+  height: auto;
+  padding: 0 8px 6px;
+  gap: 3px;
+}
+body.vertical #private-badge {
+  order: 1;
+}
+body.vertical #menu {
+  order: 2;
+  margin-left: auto;
+}
+body.vertical #address {
+  order: 5;
+  flex: 1 1 calc(100% - 36px);
+  height: 34px;
+  margin: 4px 0 0;
+  padding: 0 12px;
+  font-size: 13px;
+}
+body.vertical #star {
+  order: 6;
+  margin-top: 4px;
+}
+body.vertical #findbar {
+  order: 2;
+  flex: none;
+  flex-wrap: wrap;
+  height: auto;
+  padding: 0 8px 6px;
+}
+body.vertical #find-input {
+  flex: 1 1 100%;
+  max-width: none;
+}
+body.vertical #tabbar {
+  order: 3;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: stretch;
+  height: auto;
+  min-height: 0;
+  padding: 4px 8px 6px;
+  gap: 4px;
+}
+body.vertical #tabs {
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+body.vertical #tabs::-webkit-scrollbar {
+  display: none;
+}
+body.vertical .tab {
+  flex: none;
+  max-width: none;
+  height: 34px;
+}
+body.vertical .tab.drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+body.vertical .tab.drop-after {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+/* "+ New tab" as a full-width row under the list. */
+body.vertical #newtab {
+  width: auto;
+  height: 32px;
+  display: flex;
+  justify-content: flex-start;
+  gap: 9px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 13px;
+}
+body.vertical #newtab::after {
+  content: "New tab";
+}
+body.vertical #tabbar-spacer {
+  flex: 1 1 auto;
+}
+body.vertical #bookmarks {
+  order: 4;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: stretch;
+  height: auto;
+  max-height: 30%;
+  padding: 0 8px 10px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+body.vertical .bm {
+  max-width: none;
+  height: 28px;
+  flex: none;
+}
+body.vertical .bm-empty {
+  display: none;
+}
+body.vertical #toast {
+  top: auto;
+  bottom: 10px;
+  left: 8px;
+  right: 8px;
+  max-width: none;
+}
+
+/* ---- ⌃⇥ tab switcher (most recently used) ----
+   Shown while ⌃ is held: cards for the recent tabs, current one first,
+   highlight moves with ⇥ / ⇧⇥, release ⌃ to switch, Esc / click outside
+   cancels. The chrome webview covers the whole window while it is open. */
+#switcher {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+#switcher.show {
+  display: flex;
+}
+.sw-panel {
+  display: flex;
+  gap: 10px;
+  max-width: calc(100vw - 40px);
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  background: var(--bg-elev);
+  box-shadow: var(--shadow);
+}
+.sw-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 148px;
+  height: 112px;
+  padding: 10px 12px;
+  border: 2px solid transparent;
+  border-radius: 13px;
+  background: var(--ctl);
+  color: var(--text);
+  cursor: default;
+  transition: background 0.1s ease, border-color 0.1s ease;
+}
+.sw-card.sel {
+  border-color: var(--accent);
+  background: var(--ctl-strong);
+}
+/* The tab you came from. */
+.sw-card.current::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.sw-fav {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: var(--text-dim);
+}
+.sw-fav img,
+.sw-fav svg {
+  width: 28px;
+  height: 28px;
+}
+.sw-title {
+  max-width: 100%;
+  font-size: 12.5px;
+  line-height: 1.3;
+  text-align: center;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.sw-host {
+  max-width: 100%;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

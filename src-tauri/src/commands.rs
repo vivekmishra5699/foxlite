@@ -4,7 +4,7 @@
 use tauri::{AppHandle, Emitter};
 
 use crate::native::{self, BlockerStatus};
-use crate::store::{self, BookmarkView, Dirty, HistoryPage, Settings, Wallpaper};
+use crate::store::{self, BookmarkView, Dirty, HistoryPage, Settings, Suggestion, Wallpaper};
 use crate::{blocklist, state, tabs, url_util};
 
 // ---- navigation / tabs ------------------------------------------------------
@@ -21,6 +21,14 @@ pub fn navigate(app: AppHandle, input: String) {
 #[tauri::command]
 pub fn suggest(app: AppHandle, prefix: String) -> Option<String> {
     store::lock(&app).suggest(&prefix)
+}
+
+/// Dropdown rows for the address bar / home search box: recent pages when
+/// `query` is empty, else matching bookmarks + history (see
+/// `Store::suggestions`).
+#[tauri::command]
+pub fn suggestions(app: AppHandle, query: String, limit: usize) -> Vec<Suggestion> {
+    store::lock(&app).suggestions(&query, limit.clamp(1, 20))
 }
 
 #[tauri::command]
@@ -61,6 +69,18 @@ pub fn move_tab(app: AppHandle, id: usize, to: usize) {
 #[tauri::command]
 pub fn reopen_closed_tab(app: AppHandle) {
     tabs::reopen_closed(&app);
+}
+
+/// ⌃⇥ switcher: a card was clicked.
+#[tauri::command]
+pub fn switcher_pick(app: AppHandle, id: usize) {
+    tabs::switcher_pick(&app, id);
+}
+
+/// ⌃⇥ switcher: clicked outside the cards.
+#[tauri::command]
+pub fn switcher_cancel(app: AppHandle) {
+    tabs::switcher_cancel(&app);
 }
 
 #[tauri::command]
@@ -197,6 +217,14 @@ pub fn set_chrome_height(app: AppHandle, height: f64) {
     crate::layout::relayout(&app);
 }
 
+/// The chrome's address-bar dropdown needs the chrome webview to reach
+/// `width`×`height` (logical px) over the page; 0×0 when it closes.
+#[tauri::command]
+pub fn set_chrome_overlay(app: AppHandle, width: f64, height: f64) {
+    let size = (width > 0.0 && height > 0.0).then_some((width, height));
+    tabs::set_dropdown_overlay(&app, size);
+}
+
 /// Chrome UI calls this once it has loaded to receive the current state. We also
 /// re-apply layout: by now the window is realized, so any startup sizing that
 /// didn't "take" is corrected.
@@ -263,7 +291,7 @@ pub fn system_reduce_transparency() -> bool {
 
 #[tauri::command]
 pub fn set_settings(app: AppHandle, mut settings: Settings) {
-    let (protections_changed, ua_changed) = {
+    let (protections_changed, ua_changed, vertical) = {
         let mut s = store::lock(&app);
         // The wallpaper is only ever changed through `set_wallpaper`.
         settings.wallpaper = s.settings.wallpaper.clone();
@@ -277,7 +305,11 @@ pub fn set_settings(app: AppHandle, mut settings: Settings) {
             || old.block_popups != settings.block_popups;
         let ua = old.user_agent != settings.user_agent;
         s.settings = settings;
-        (protections, ua.then_some(s.settings.user_agent.clone()))
+        (
+            protections,
+            ua.then_some(s.settings.user_agent.clone()),
+            s.settings.vertical_tabs,
+        )
     };
     store::touch(&app, Dirty::Settings);
     if protections_changed {
@@ -286,6 +318,21 @@ pub fn set_settings(app: AppHandle, mut settings: Settings) {
     if let Some(ua) = ua_changed {
         tabs::set_user_agent_all(&app, &ua);
     }
+    tabs::set_vertical_tabs(&app, vertical);
+    tabs::emit_chrome_data(&app);
+    let _ = app.emit("settings-changed", ());
+}
+
+/// Flip between the tab strip and the tab sidebar (View menu).
+#[tauri::command]
+pub fn toggle_vertical_tabs(app: AppHandle) {
+    let vertical = {
+        let mut s = store::lock(&app);
+        s.settings.vertical_tabs = !s.settings.vertical_tabs;
+        s.settings.vertical_tabs
+    };
+    store::touch(&app, Dirty::Settings);
+    tabs::set_vertical_tabs(&app, vertical);
     tabs::emit_chrome_data(&app);
     let _ = app.emit("settings-changed", ());
 }

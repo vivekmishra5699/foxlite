@@ -89,6 +89,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             "Toggle Bookmarks Bar",
             "Shift+CmdOrCtrl+B",
         )?)
+        .item(&item(
+            app,
+            "toggle-vertical-tabs",
+            "Toggle Vertical Tabs",
+            "Shift+CmdOrCtrl+S",
+        )?)
         .build()?;
 
     let history = SubmenuBuilder::new(app, "History")
@@ -186,6 +192,12 @@ pub fn build_popup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(&item(app, "find", "Find in Page…", "")?)
         .item(&item(app, "print", "Print…", "")?)
         .item(&item(app, "toggle-bookmarks", "Toggle Bookmarks Bar", "")?)
+        .item(&item(
+            app,
+            "toggle-vertical-tabs",
+            "Toggle Vertical Tabs",
+            "",
+        )?)
         .item(&PredefinedMenuItem::separator(app)?)
         .item(&item(app, "free-memory", "Sleep Background Tabs", "")?)
         .item(&PredefinedMenuItem::separator(app)?)
@@ -217,13 +229,14 @@ pub fn handle(app: &AppHandle, id: &str) {
         "settings" => tabs::open_internal(app, "settings.html"),
         "bookmark" => commands::bookmark_current(app.clone()),
         "toggle-bookmarks" => commands::toggle_bookmarks_bar(app.clone()),
+        "toggle-vertical-tabs" => commands::toggle_vertical_tabs(app.clone()),
         "free-memory" => tabs::discard_all_background(app),
         "devtools" => tabs::toggle_devtools(app),
         "view-source" => tabs::view_source(app),
         "reload-nocache" => tabs::reload_ignoring_cache(app),
         "clear-site-data" => tabs::clear_site_data(app),
-        "next-tab" => tabs::select_relative(app, 1),
-        "prev-tab" => tabs::select_relative(app, -1),
+        "next-tab" => tabs::cycle(app, 1),
+        "prev-tab" => tabs::cycle(app, -1),
         "tab-last" => tabs::select_index(app, 0, true),
         "find" | "focus-address" => {
             let _ = app.emit_to("chrome", "menu-action", id);
