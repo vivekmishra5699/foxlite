@@ -3,6 +3,8 @@ name = "foxlite"
 version = "0.1.0"
 description = "A minimal, memory-light browser"
 edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/vivekmishra5699/foxlite"
 
 [lib]
 name = "foxlite_lib"

@@ -1,0 +1,10 @@
+Foxlite
+Copyright 2026 Vivek Mishra
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product bundles a compiled ad, tracker and malware blocklist
+(src-tauri/blocklist/rules.jsonl.br) generated from third-party filter lists
+that are NOT covered by the Apache License. Those lists, their authors and
+their licenses are recorded in THIRD-PARTY-NOTICES.md, which is regenerated
+together with the blocklist by `npm run blocklist`.

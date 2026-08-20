@@ -30,6 +30,8 @@
       "signingIdentity": "-",
       "minimumSystemVersion": "12.0"
     },
+    "copyright": "Copyright 2026 Vivek Mishra. Licensed under the Apache License 2.0.",
+    "licenseFile": "../LICENSE",
     "shortDescription": "A minimal, memory-light browser",
     "longDescription": "Foxlite is a lightweight browser shell on the operating system's WebView with built-in ad, tracker and malware blocking, a memory saver, and private tabs.",
     "category": "Productivity"
